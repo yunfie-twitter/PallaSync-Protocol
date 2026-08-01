@@ -6,9 +6,9 @@ PallaSync Protocolは、Palleria向けのアカウントレスなエンドツー
 
 ## 仕様
 
-- [PallaSync Protocol 1.0](./PALLASYNC-PROTOCOL.md)
+- [PallaSync Protocol 1.0](./docs/PALLASYNC-PROTOCOL.md)
 - [PallaSync 1.0 JSON Schema](./pallasync-v1.schema.json)
-- [旧Draftからの命名移行](./NAMING-MIGRATION.md)
+- [旧Draftからの命名移行](./docs/NAMING-MIGRATION.md)
 
 ## 識別子
 
