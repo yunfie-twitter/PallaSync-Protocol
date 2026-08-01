@@ -1,3 +1,14 @@
+---
+title: "PallaSync Protocol 1.0"
+description: "PallaSync Protocol 1.0の規範仕様書"
+layout: doc
+outline: deep
+lastUpdated: true
+editLink: false
+prev: false
+next: false
+---
+
 # PallaSync Protocol 1.0
 
 - Document ID: `PALLASYNC-1`
