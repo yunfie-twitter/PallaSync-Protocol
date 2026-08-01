@@ -1,0 +1,312 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://palleria.invalid/schemas/pallasync-v1.schema.json",
+  "title": "PallaSync Protocol 1.0 Core Schema",
+  "type": "object",
+  "$defs": {
+    "base64url43": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    },
+    "base64url": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "uuidv7": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "chainVector": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/base64url43"
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      }
+    },
+    "requestEnvelope": {
+      "type": "object",
+      "required": [
+        "protocol_version",
+        "message_type",
+        "request_id",
+        "chain_id",
+        "device_id",
+        "issued_at_ms",
+        "expires_at_ms",
+        "nonce",
+        "critical",
+        "body",
+        "signature"
+      ],
+      "properties": {
+        "protocol_version": {
+          "const": "1.0"
+        },
+        "message_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "request_id": {
+          "$ref": "#/$defs/uuidv7"
+        },
+        "chain_id": {
+          "$ref": "#/$defs/base64url43"
+        },
+        "device_id": {
+          "$ref": "#/$defs/base64url43"
+        },
+        "issued_at_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "expires_at_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "nonce": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{22}$"
+        },
+        "critical": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "body": {
+          "type": "object"
+        },
+        "signature": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{86}$"
+        }
+      },
+      "additionalProperties": true
+    },
+    "deviceCertificate": {
+      "type": "object",
+      "required": [
+        "protocol_version",
+        "certificate_id",
+        "chain_id",
+        "device_id",
+        "device_sign_public_key",
+        "device_hpke_public_key",
+        "role",
+        "capabilities",
+        "issued_at_ms",
+        "not_before_ms",
+        "not_after_ms",
+        "issuer",
+        "critical",
+        "signature"
+      ],
+      "properties": {
+        "protocol_version": {
+          "const": "1.0"
+        },
+        "certificate_id": {
+          "$ref": "#/$defs/uuidv7"
+        },
+        "chain_id": {
+          "$ref": "#/$defs/base64url43"
+        },
+        "device_id": {
+          "$ref": "#/$defs/base64url43"
+        },
+        "device_sign_public_key": {
+          "$ref": "#/$defs/base64url43"
+        },
+        "device_hpke_public_key": {
+          "$ref": "#/$defs/base64url43"
+        },
+        "role": {
+          "enum": [
+            "admin",
+            "member"
+          ]
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "issued_at_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "not_before_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "not_after_ms": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "issuer": {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "enum": [
+                "root",
+                "device"
+              ]
+            },
+            "device_id": {
+              "$ref": "#/$defs/base64url43"
+            }
+          },
+          "additionalProperties": false
+        },
+        "critical": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "signature": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{86}$"
+        }
+      },
+      "additionalProperties": true
+    },
+    "dataPayload": {
+      "type": "object",
+      "required": [
+        "schema",
+        "entity_id",
+        "operation",
+        "context",
+        "lamport",
+        "created_at_ms",
+        "body"
+      ],
+      "properties": {
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9.-]+/[0-9]+$"
+        },
+        "entity_id": {
+          "$ref": "#/$defs/uuidv7"
+        },
+        "operation": {
+          "enum": [
+            "upsert",
+            "delete"
+          ]
+        },
+        "context": {
+          "$ref": "#/$defs/chainVector"
+        },
+        "lamport": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "created_at_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "body": {}
+      },
+      "additionalProperties": true
+    },
+    "dataEvent": {
+      "type": "object",
+      "required": [
+        "protocol_version",
+        "chain_id",
+        "device_id",
+        "device_seq",
+        "prev_event_hash",
+        "key_epoch",
+        "event_type",
+        "ciphertext",
+        "signature",
+        "event_hash"
+      ],
+      "properties": {
+        "protocol_version": {
+          "const": "1.0"
+        },
+        "chain_id": {
+          "$ref": "#/$defs/base64url43"
+        },
+        "device_id": {
+          "$ref": "#/$defs/base64url43"
+        },
+        "device_seq": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "prev_event_hash": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/base64url43"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "key_epoch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "event_type": {
+          "const": "data"
+        },
+        "ciphertext": {
+          "$ref": "#/$defs/base64url"
+        },
+        "signature": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{86}$"
+        },
+        "event_hash": {
+          "$ref": "#/$defs/base64url43"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/requestEnvelope"
+    },
+    {
+      "$ref": "#/$defs/deviceCertificate"
+    },
+    {
+      "$ref": "#/$defs/dataPayload"
+    },
+    {
+      "$ref": "#/$defs/dataEvent"
+    }
+  ]
+}
