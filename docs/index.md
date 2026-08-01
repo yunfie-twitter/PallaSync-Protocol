@@ -3,9 +3,9 @@
 layout: home
 
 hero:
-name: "PallaSync Protocol"
-text: "Accountless, encrypted device synchronization"
-tagline: "アカウント登録なしで、複数端末間のデータを安全に同期するためのプロトコル"
+name: PallaSync Protocol
+text: Accountless, encrypted device synchronization
+tagline: アカウント登録なしで、複数端末間のデータを安全に同期するためのプロトコル
 actions:
 - theme: brand
 text: 仕様書を読む
