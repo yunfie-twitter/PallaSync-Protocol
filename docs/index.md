@@ -1,39 +1,31 @@
 ---
-
 layout: home
 
 hero:
-name: PallaSync Protocol
-text: Accountless, encrypted device synchronization
-tagline: アカウント登録なしで、複数端末間のデータを安全に同期するためのプロトコル
-actions:
-- theme: brand
-text: 仕様書を読む
-link: /PALLASYNC-PROTOCOL
-- theme: alt
-text: GitHub
-link: https://github.com/yunfie-twitter/PallaSync-Protocol
+  name: "PallaSync Protocol"
+  text: "Accountless, encrypted device synchronization"
+  tagline: "アカウント登録なしで、複数端末間のデータを安全に同期するためのプロトコル"
+  actions:
+    - theme: brand
+      text: "仕様書を読む"
+      link: "/PALLASYNC-PROTOCOL"
+    - theme: alt
+      text: "GitHub"
+      link: "https://github.com/yunfie-twitter/PallaSync-Protocol"
 
 features:
-
-* title: アカウントレス
-  details: ユーザー登録やパスワードを必要とせず、同期チェーンと端末鍵によって端末を関連付けます。
-
-* title: エンドツーエンド暗号化
-  details: 同期データはクライアント側で暗号化され、Syncサーバーやリレーサーバーは平文を取得できません。
-
-* title: サーバー同期
-  details: 端末が同時にオンラインでない場合でも、暗号化済みの差分イベントをサーバー経由で同期できます。
-
-* title: P2P同期
-  details: WebRTC、ICE、STUN、TURNを利用し、利用可能な場合は端末間で直接データを転送します。
-
-* title: 端末ごとの署名
-  details: 各端末が固有の署名鍵を持ち、イベントの送信元、完全性、順序を検証します。
-
-* title: 競合と削除の伝播
-  details: Vector Clock、Lamport Clock、CRDT、Tombstoneを使用し、並行変更や削除済みデータの復活を防ぎます。
-
+  - title: "アカウントレス"
+    details: "ユーザー登録やパスワードを必要とせず、同期チェーンと端末鍵によって端末を関連付けます。"
+  - title: "エンドツーエンド暗号化"
+    details: "同期データはクライアント側で暗号化され、Syncサーバーやリレーサーバーは平文を取得できません。"
+  - title: "サーバー同期"
+    details: "端末が同時にオンラインでない場合でも、暗号化済みの差分イベントをサーバー経由で同期できます。"
+  - title: "P2P同期"
+    details: "WebRTC、ICE、STUN、TURNを利用し、利用可能な場合は端末間で直接データを転送します。"
+  - title: "端末ごとの署名"
+    details: "各端末が固有の署名鍵を持ち、イベントの送信元、完全性、順序を検証します。"
+  - title: "競合と削除の伝播"
+    details: "Vector Clock、Lamport Clock、CRDT、Tombstoneを使用し、並行変更や削除済みデータの復活を防ぎます。"
 ---
 
 ## PallaSyncとは
@@ -58,13 +50,13 @@ PallaSync Protocolは、Palleria向けに設計されたアカウントレス同
 
 PallaSync 1.0では、次の暗号技術を使用します。
 
-* Ed25519
-* X25519
-* HKDF-SHA-256
-* ChaCha20-Poly1305
-* HPKE
-* TLS 1.3
-* JSON Canonicalization Scheme
+- Ed25519
+- X25519
+- HKDF-SHA-256
+- ChaCha20-Poly1305
+- HPKE
+- TLS 1.3
+- JSON Canonicalization Scheme
 
 独自暗号アルゴリズムは使用しません。
 
@@ -76,6 +68,6 @@ PallaSync Protocol 1.0は、現在 **Draft Standard** です。
 
 ## ドキュメント
 
-* [PallaSync Protocol 1.0](/PALLASYNC-PROTOCOL)
-* [命名移行について](/NAMING-MIGRATION)
-* [JSON Schema](https://github.com/OWNER/PallaSync-Protocol/blob/main/pallasync-v1.schema.json)
+- [PallaSync Protocol 1.0](/PALLASYNC-PROTOCOL)
+- [命名移行について](/NAMING-MIGRATION)
+- [JSON Schema](https://github.com/OWNER/PallaSync-Protocol/blob/main/pallasync-v1.schema.json)
