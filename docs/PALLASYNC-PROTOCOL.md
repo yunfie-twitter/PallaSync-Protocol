@@ -1092,3 +1092,18 @@ Data Eventã¯ãƒ­ãƒ¼ã‚«ãƒ«DBå¤‰æ›´ã¨åŒä¸€ãƒˆãƒ©ãƒ³ã‚¶ã‚¯ã‚·ãƒ§ãƒ³ã€ã¾ãŸã¯å
 ãƒãƒƒãƒˆãƒ¯ãƒ¼ã‚¯é€ä¿¡ã«æˆåŠŸã—ã¦ã‹ã‚‰Eventã‚’ç”Ÿæˆã™ã‚‹è¨­è¨ˆã¯ç¦æ­¢ã—ã¾ã™ã€‚
 
 åŒä¸€Eventã®å†é€ã¯åŒã˜æš—å·æ–‡ã€ç½²åã€Event Hashã‚’ä½¿ç”¨ã—ãªã‘ã‚Œã°ãªã‚Šã¾ã›ã‚“ã€‚å†é€æ™‚
+
+## 25. WebRTC P2P ƒVƒOƒiƒŠƒ“ƒO (Signaling)
+
+PallaSync‚É‚¨‚¯‚éÀƒf[ƒ^‚Ì“¯Šú‚ÍAƒVƒOƒiƒŠƒ“ƒOƒT[ƒo[iHTTPj‚ğ‰î‚³‚¸AWebRTC DataChannel‚ğ’Ê‚¶‚ÄP2P‚Å’¼Ús‚í‚ê‚Ü‚·B‚±‚Ì‚½‚ßAƒfƒoƒCƒXŠÔ‚ÅSDPiSession Description Protocolj‚¨‚æ‚ÑICE Candidate‚ÌŒğŠ·‚ğˆÈ‰º‚ÌƒvƒƒZƒX‚ÅÀ{‚µ‚Ü‚·B
+
+### 25.1. Offer ‚Ì‘—M (invite_accept)
+JoineriQ‰Á‘¤j‚ÍAHostiƒzƒXƒg‘¤j‚ÌQRƒR[ƒh‚ğƒXƒLƒƒƒ“‚µASASŒŸØ‚ğŒo‚ÄQ‰Á‚ğ³‘ø‚·‚éÛAWebRTC‚ÌOffer‚ğ¶¬‚µ‚Ü‚·B‚±‚ÌOffer‚ÍAŠù‘¶‚Ì invite_accept ƒCƒxƒ“ƒgƒyƒCƒ[ƒh‚É sdp_offer ƒvƒƒpƒeƒB‚Æ‚µ‚Ä•¶š—ñ‚Å–„‚ß‚Ü‚êAƒVƒOƒiƒŠƒ“ƒOƒT[ƒo[Œo—R‚ÅHost‚É‘—M‚³‚ê‚Ü‚·B
+
+### 25.2. Answer ‚Ì‘—M (sdp_answer)
+Host‚Í invite_accept ‚ğóM‚·‚é‚ÆA“à•ï‚³‚ê‚½ sdp_offer ‚ğˆ—‚µA©g‚ÌAnswer‚ğ¶¬‚µ‚Ü‚·BHost‚Í‚±‚ê‚ğ event_type: "sdp_answer" ‚Æ‚µ‚ÄAsdp_answer ƒvƒƒpƒeƒB‚ÉŠi”[‚µ‚Ä‘—M‚µ‚Ü‚·B
+
+### 25.3. ICE Candidate ‚ÌŒğŠ· (ice_candidate)
+WebRTC‚ÌP2PŒo˜H‚ğŠm—§‚·‚é‚½‚ßA—¼ƒfƒoƒCƒX‚Í”ñ“¯Šú‚É event_type: "ice_candidate" ƒCƒxƒ“ƒg‚ğ‘—M‚µ‡‚¢‚Ü‚·B‚±‚ÌƒCƒxƒ“ƒg‚É‚Í sdpMid, sdpMLineIndex, candidate ‚ªŠÜ‚Ü‚ê‚Ü‚·B
+
+‚±‚ê‚çƒVƒOƒiƒŠƒ“ƒO—pƒCƒxƒ“ƒg‚ÌƒXƒL[ƒ}’è‹`‚É‚Â‚¢‚Ä‚Í pallasync-v1.schema.json ‚Ì signalingEvent ‚ğQÆ‚µ‚Ä‚­‚¾‚³‚¢B

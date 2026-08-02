@@ -1,0 +1,119 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "PallaSync Protocol API",
+    "description": "API specification for PallaSync, a decentralized, end-to-end encrypted device synchronization protocol.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.example.com"
+    }
+  ],
+  "paths": {
+    "/pallasync/v1/events": {
+      "post": {
+        "summary": "Push a Data Event",
+        "description": "Publishes a new encrypted DataEvent or RequestEnvelope to the synchronization chain.",
+        "operationId": "pushEvent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/vnd.palleria.sync+json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventEnvelope"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event successfully accepted and enqueued."
+          },
+          "400": {
+            "description": "Invalid event format or signature."
+          },
+          "409": {
+            "description": "Event conflict (e.g., duplicated sequence)."
+          }
+        }
+      }
+    },
+    "/pallasync/v1/events/{chainId}": {
+      "get": {
+        "summary": "Fetch Chain Events",
+        "description": "Retrieves the sequence of encrypted DataEvents for a specific chain.",
+        "operationId": "fetchEvents",
+        "parameters": [
+          {
+            "name": "chainId",
+            "in": "path",
+            "required": true,
+            "description": "The base64-url encoded Chain ID.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "description": "Optional sequence number or timestamp to fetch events from.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of DataEvents.",
+            "content": {
+              "application/vnd.palleria.sync+json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EventEnvelope"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Chain not found."
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "EventEnvelope": {
+        "description": "Matches the 'dataEvent' or 'requestEnvelope' definitions in the JSON schema.",
+        "type": "object",
+        "properties": {
+          "protocol_version": {
+            "type": "string",
+            "example": "1.0"
+          },
+          "chain_id": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "event_type": {
+            "type": "string",
+            "enum": ["data", "invite", "invite_accept"]
+          },
+          "ciphertext": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": ["protocol_version", "chain_id", "device_id", "event_type", "ciphertext", "signature"]
+      }
+    }
+  }
+}

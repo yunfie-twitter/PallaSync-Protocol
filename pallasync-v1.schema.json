@@ -293,6 +293,58 @@
         }
       },
       "additionalProperties": false
+    },
+    "signalingEvent": {
+      "type": "object",
+      "required": [
+        "protocol_version",
+        "chain_id",
+        "device_id",
+        "event_type"
+      ],
+      "properties": {
+        "protocol_version": {
+          "const": "1.0"
+        },
+        "chain_id": {
+          "$ref": "#/$defs/base64url43"
+        },
+        "device_id": {
+          "type": "string"
+        },
+        "event_type": {
+          "enum": [
+            "invite_accept",
+            "sdp_answer",
+            "ice_candidate"
+          ]
+        },
+        "sdp_offer": {
+          "type": "string"
+        },
+        "sdp_answer": {
+          "type": "string"
+        },
+        "sdpMid": {
+          "type": "string"
+        },
+        "sdpMLineIndex": {
+          "type": "integer"
+        },
+        "candidate": {
+          "type": "string"
+        },
+        "ciphertext": {
+          "type": "string"
+        },
+        "signature": {
+          "type": "string"
+        },
+        "public_key": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
     }
   },
   "oneOf": [
@@ -307,6 +359,9 @@
     },
     {
       "$ref": "#/$defs/dataEvent"
+    },
+    {
+      "$ref": "#/$defs/signalingEvent"
     }
   ]
 }
