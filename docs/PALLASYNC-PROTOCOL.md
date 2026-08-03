@@ -1093,17 +1093,151 @@ Data EventはローカルDB変更と同一トランザクション、または�
 
 同一Eventの再送は同じ暗号文、署名、Event Hashを使用しなければなりません。再送時
 
-## 25. WebRTC P2P �V�O�i�����O (Signaling)
+## 25. WebRTC P2P Signaling
 
-PallaSync�ɂ�������f�[�^�̓����́A�V�O�i�����O�T�[�o�[�iHTTP�j������AWebRTC DataChannel��ʂ���P2P�Œ��ڍs���܂��B���̂��߁A�f�o�C�X�Ԃ�SDP�iSession Description Protocol�j�����ICE Candidate�̌������ȉ��̃v���Z�X�Ŏ��{���܂��B
+PallaSyncは同期データを交換するために、シグナリングサーバー（HTTP）を経由してWebRTC DataChannelを確立し、P2P通信を行います。シグナリングサーバーは信頼対象外（Untrusted）として設計されており、すべてのイベントはエンドツーエンドで署名・検証されます。
 
-### 25.1. Offer �̑��M (invite_accept)
-Joiner�i�Q�����j�́AHost�i�z�X�g���j��QR�R�[�h���X�L�������ASAS���؂��o�ĎQ������������ہAWebRTC��Offer�𐶐����܂��B����Offer�́A������ invite_accept �C�x���g�y�C���[�h�� sdp_offer �v���p�e�B�Ƃ��ĕ�����Ŗ��ߍ��܂�A�V�O�i�����O�T�[�o�[�o�R��Host�ɑ��M����܂��B
+### 25.1 Signaling Event Envelope
 
-### 25.2. Answer �̑��M (sdp_answer)
-Host�� invite_accept ����M����ƁA����ꂽ sdp_offer ���������A���g��Answer�𐶐����܂��BHost�͂���� event_type: "sdp_answer" �Ƃ��āAsdp_answer �v���p�e�B�Ɋi�[���đ��M���܂��B
+すべてのシグナリングイベントは独立した署名付きエンベロープとして構成され、`event_type` によって内容が厳密に判別可能なDiscriminated Unionとして扱われます。
 
-### 25.3. ICE Candidate �̌��� (ice_candidate)
-WebRTC��P2P�o�H���m�����邽�߁A���f�o�C�X�͔񓯊��� event_type: "ice_candidate" �C�x���g�𑗐M�������܂��B���̃C�x���g�ɂ� sdpMid, sdpMLineIndex, candidate ���܂܂�܂��B
+```json
+{
+  "protocol_version": "2.0",
+  "event_id": "UUIDv7",
+  "session_id": "UUIDv7",
+  "chain_id": "BASE64URL_CHAIN_ID",
+  "from_device_id": "BASE64URL_DEVICE_ID",
+  "to_device_id": "BASE64URL_DEVICE_ID",
+  "event_type": "offer",
+  "revision": 1,
+  "created_at_ms": 1785581400000,
+  "expires_at_ms": 1785581460000,
+  "payload": {
+    "sdp": "..."
+  },
+  "signature": "BASE64URL_ED25519_SIGNATURE"
+}
+```
 
-�����V�O�i�����O�p�C�x���g�̃X�L�[�}��`�ɂ��Ă� pallasync-v1.schema.json �� signalingEvent ���Q�Ƃ��Ă��������B
+イベントは一つにつき一つの意味だけを持ちます（`invite.accepted` のような統合イベントは禁止）。ただし、HTTP往復を減らすための配列によるBatch送信は許可されます。送信者は `ASCII("PALLASYNC-SIGNALING-SIGN-v1 ")` とペイロードを用いて署名を生成し、受信側は証明書失効状態、Chain ID、宛先、署名、期限、`event_id` 重複を必ず検証しなければなりません。
+
+### 25.2 Peer探索とPresence
+
+端末は接続候補を探すためにシグナリングサーバーからPresence情報を取得できます。ただし、シグナリングサーバーの表示は「単なる候補」であり、信頼してはなりません。
+
+- **プライバシー制限**: PresenceはChain内でのみ取得可能とし、端末表示名やIPアドレスを含めてはなりません。最終オンライン時刻は粗い粒度（例: 数分〜1時間単位）で提供し、P2P無効時はPresenceを送信せず、短時間で失効させるべきです。
+
+### 25.3 シグナリングの直列化と責任分界
+
+WebRTCの非同期処理による競合バグを防ぐため、以下の実装ルールを必須とします。
+- **直列化の必須化**: 端末・PeerConnectionごとに単一の処理キューを持たせ、`setLocalDescription`、`setRemoteDescription`、`addIceCandidate` などのすべての操作を必ず直列化しなければなりません。並行実行は禁止されます。
+- **SignalingCoordinatorの導入**: アプリの複数レイヤーから直接WebRTC APIを操作することを禁止します。必ず単一の `SignalingCoordinator` クラスなどを経由してのみ操作を行わなければなりません。
+- **PeerConnection世代番号**: 実装内部で世代番号 (`peerConnectionGeneration`) を保持し、非同期処理完了時に世代が変わっていれば処理を破棄しなければなりません。
+- **作成中フラグ**: `signalingState` だけでなく、`making_offer`, `applying_remote_description`, `setting_local_description` のような内部状態フラグを保持し、競合判定に用いる必要があります。
+
+### 25.4 状態機械と受付ルール
+
+`signalingState` ごとのイベント受付可否は以下の通り固定されます。
+- **offer**: `stable` 状態のみ許可。それ以外は保留または規定の衝突処理。
+- **answer**: `have-local-offer` 状態のみ許可。それ以外は拒否。
+- **ice-candidate**: 対応するRemote Descriptionが設定済みの場合のみ許可。未設定時は一時保留。
+- **ice-end**: 対応するICE世代が存在する場合のみ許可。それ以外は拒否。
+- **close**: `closed` 以外で許可。冪等に終了。
+
+### 25.5 Offer衝突 (Glare) 対策と役割固定
+
+- **役割固定**: 初回接続時は、JoinerだけがOfferを送信でき、HostだけがAnswerを送信できます。役割に反するメッセージはプロトコル違反として即座に拒否します。
+- **Glare判定**: 通常の同期やICE RestartでのOffer衝突時は、`polite = local_device_id_raw > remote_device_id_raw` により決定します。衝突時、`polite` 側は自身のOffer処理を破棄し、相手のOfferを受け入れます。
+
+### 25.6 SDPの送信と適用プロセス
+
+- **送信手順の固定**: Offer/Answerを送信する際は、必ず `setLocalDescription()` が成功した後に、WebRTC APIから `localDescription` を読み出して送信しなければなりません。
+- **二段階検証**: 受信したSDPを直ちにWebRTC APIへ渡すことは禁止します。JSON検証 -> SDP基本検証（DataChannel用 application m-lineの存在、音声/映像の拒否、NUL文字禁止、サイズ制限等） -> 状態整合性確認 -> `setRemoteDescription` の順に適用します。
+- **Answerのダイジェスト検証**: `answer` イベントは必ず対象となるOfferのダイジェスト (`offer_hash`) を含みます。送信待ちのOfferハッシュと一致しない場合、Answerは適用してはなりません。
+
+### 25.7 CandidateとTrickle ICE
+
+- **ダイジェスト検証**: `ice-candidate` イベントは必ず `remote_description_hash`, `sdp_mid`, `sdp_mline_index` を含みます。現在のRemote Descriptionと一致しない場合は適用を拒否または保留します。
+- **保留条件の厳密化**: Candidateは、`remoteDescription != null` かつダイジェスト・世代が一致するまで `addIceCandidate()` してはなりません。
+- **Candidateの区別**: `candidate` プロパティの空文字や null を終了通知として扱ってはならず、必ず明示的な `ice-end` イベントを使用します。
+- **プライバシー設定**: クライアントは `direct-preferred`, `relay-preferred`, `relay-only` のモードを持ちます。`relay-only` 時はローカルIPの漏洩を防ぐためTURN Candidate以外を交換してはなりません。
+- **エラー処理**: Candidate一件の適用（形式不正、mid不一致等）が失敗しても、PeerConnection全体を即座に閉じてはなりません。
+
+### 25.8 異常系処理とタイマー
+
+- **部分状態の破棄**: Offer適用後にAnswer生成に失敗した場合など、中途半端な状態に陥った場合はPeerConnectionを閉じて再作成します。例外を出したまま継続することは禁止されます。
+- **タイマーの統一**:
+  - `answer_wait_timeout`: Offerがシグナリングサーバーに受理された時点から開始。
+  - `ice_connect_timeout`: Remote Descriptionと最初のCandidateが揃った時点から開始。
+  - `candidate_buffer_timeout`: Candidateをキューへ追加した時点から開始。
+
+### 25.9 適合テストケースの要求
+
+実装者は以下の異常系を含むテストスイートを必ず用意し、仕様通りの挙動を示すことを確認しなければなりません。
+- Answer/CandidateがOfferより先に到着するケース
+- 同じAnswerの2回受信
+- 非同期処理完了前にPeerConnectionが破棄されたケース
+- SDP typeとイベントtypeが不一致のケース
+- 意図しない音声・映像m-lineが含まれるSDP
+
+## 26. WebRTC DataChannel と接続後認証
+
+### 26.1 DataChannel設定と優先度
+
+- すべての通信は `label: "pallasync/1"`, `protocol: "pallasync/1"`, `ordered: true`, `negotiated: false` で固定されます。
+- メッセージは最大 **64 KiB** の独自フレームへフラグメント化されます。
+- 大量データ転送によるPing遅延を防ぐため、`pallasync/control/1` と `pallasync/events/1` の2本のDataChannelに分けるか、同一チャネル内で優先度キューイングを実装しなければなりません。
+
+### 26.2 接続後の認証 (`p2p.hello`)
+
+DataChannel接続直後、必ず相互に `p2p.hello` メッセージを交換し、署名検証、証明書失効確認、Chain IDとSession IDの照合を行います。この認証を通過するまでData Eventを送受信してはなりません。
+
+### 26.3 Consent Freshness (Ping/Pong)
+
+P2P接続を維持するため、アプリケーション層で生存確認を実施します。
+- **Ping間隔**: 30秒
+- **Pong期限**: 10秒
+- **連続失敗回数**: 3回で切断
+- **アイドル切断**: 同期が完了し、新たな操作がない場合は5分で自動切断。
+
+## 27. P2P同期プロトコル (Data Synchronization over P2P)
+
+### 27.1 P2P接続の選択規則と同時HTTPS同期
+
+同期チェーンに多数の端末が存在する場合でも、雪だるま式なフルメッシュ接続を避けるため、通常時は **最大1〜2 Peer** に接続を制限します。完全再同期が必要な場合のみ複数Peerへの接続を試行します。
+また、P2P同期中もバックグラウンドのHTTPS同期は有効です。同一Eventを受信した場合は冪等に処理し、同一Device Sequenceで異なるEvent Hashを観測した場合のみ分岐（Conflict）として処理します。
+
+### 27.2 プロトコル能力交換 (`capabilities`)
+
+`p2p.hello` 成功後、直ちに `capabilities` メッセージを交換し、サポートする最大フレームサイズ、バッチ件数、圧縮方式、および対応するスキーマのバージョンを伝えます。暗号スイートのダウングレードは禁止されています。
+未知の新しいデータ種別（Schema）を受信した場合は、接続を切断せず、そのEventを `quarantined` 状態にして既知のイベントの同期を継続します。
+
+### 27.3 Control Logの先行同期
+
+受信側が知らない証明書やKey Epochで暗号化されたData Eventの検証エラーを防ぐため、Data Eventの交換前に必ず以下の順序で状態を同期します。
+1. Control Head（シーケンス・ハッシュ）の交換
+2. 不足するControl Eventの転送
+3. 証明書・失効状態・Epoch状態の更新
+
+### 27.4 同期状態の固定 (`sync.begin`) と明示的Pull (`sync.request`)
+
+Control Logの同期完了後、双方が `sync.begin` を送信して現在の Chain Vector を固定し、このラウンドの同期基準とします。
+データは勝手に送信（Push）せず、双方が Chain Vector を比較し、不足している範囲を明示的に `sync.request` で要求（Pull）します。同期中に発生した新規Eventは次回の同期ラウンドへ回されます。
+
+### 27.5 転送単位、再開可能転送、バックプレッシャー
+
+- **BatchとACK**: データは `event.batch` で複数件まとめて転送し、受信側は検証と永続化が完了した後に `event.ack` を返します。
+- **再開可能な転送**: 切断時は、受信側が永続化済みの最大連続Sequence（Chain Vector）から再開されます。未検証・メモリ上のイベントは反映されません。
+- **バックプレッシャー**: 送信バッファ膨張を防ぐため、`bufferedAmount` が送信停止閾値（例: 4 MiB）を超えた場合は送信を停止し、再開閾値（例: 1 MiB）を下回った際に送信を再開する制御を実装します。
+- **圧縮**: PallaSyncのData Event本体は既にChaCha20-Poly1305で暗号化されており圧縮効果がないため、暗号文の再圧縮は行わず、メタデータまたは暗号化前のレベルでのみ任意で圧縮（Zstandard等）を行います。
+
+### 27.6 エラー分類とペナルティ
+
+エラーは機械判定可能なコードで分類されます。
+- `UNSUPPORTED_VERSION`, `CHAIN_MISMATCH`, `INVALID_CERTIFICATE`, `DEVICE_REVOKED`: 即時切断し、再接続を拒否。
+- `INVALID_EVENT`, `CONTROL_LOG_DIVERGED`: ペナルティ（指数バックオフ）を課し、複数回繰り返す場合は一定時間接続を禁止。ローカル監査ログに記録するが、自動的な端末失効は行わずAdminへの警告に留める。
+
+### 27.7 接続終了手順 (`session.close`)
+
+同期が完了した場合、いきなりDataChannelを閉じるのではなく、必ず `session.close` メッセージを交換し、最終的なVectorや終了理由 (`sync-complete`) を相手に伝えてから切断します。

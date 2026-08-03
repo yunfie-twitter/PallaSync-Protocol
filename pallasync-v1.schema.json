@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://palleria.invalid/schemas/pallasync-v1.schema.json",
-  "title": "PallaSync Protocol 1.0 Core Schema",
+  "$id": "https://palleria.invalid/schemas/pallasync-v2.schema.json",
+  "title": "PallaSync Protocol 2.0 Core Schema",
   "type": "object",
   "$defs": {
     "base64url43": {
@@ -298,53 +298,545 @@
       "type": "object",
       "required": [
         "protocol_version",
+        "event_id",
+        "session_id",
         "chain_id",
-        "device_id",
-        "event_type"
+        "from_device_id",
+        "to_device_id",
+        "event_type",
+        "revision",
+        "created_at_ms",
+        "expires_at_ms",
+        "payload",
+        "signature"
       ],
       "properties": {
         "protocol_version": {
-          "const": "1.0"
+          "const": "2.0"
+        },
+        "event_id": {
+          "$ref": "#/$defs/uuidv7"
+        },
+        "session_id": {
+          "$ref": "#/$defs/uuidv7"
+        },
+        "chain_id": {
+          "$ref": "#/$defs/base64url43"
+        },
+        "from_device_id": {
+          "$ref": "#/$defs/base64url43"
+        },
+        "to_device_id": {
+          "$ref": "#/$defs/base64url43"
+        },
+        "event_type": {
+          "enum": [
+            "offer",
+            "answer",
+            "ice-candidate",
+            "ice-end",
+            "ice-restart",
+            "close",
+            "error"
+          ]
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "created_at_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expires_at_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "payload": {
+          "type": "object"
+        },
+        "signature": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{86}$"
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "event_type": {
+                "const": "offer"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/signalingOffer"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event_type": {
+                "const": "answer"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/signalingAnswer"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event_type": {
+                "const": "ice-candidate"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "$ref": "#/$defs/signalingIceCandidate"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event_type": {
+                "const": "ice-end"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event_type": {
+                "const": "ice-restart"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event_type": {
+                "const": "close"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event_type": {
+                "const": "error"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "payload": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "p2pHello": {
+      "type": "object",
+      "required": [
+        "type",
+        "protocol",
+        "session_id",
+        "chain_id",
+        "device_id",
+        "certificate",
+        "control_seq",
+        "control_hash",
+        "nonce",
+        "signature"
+      ],
+      "properties": {
+        "type": {
+          "const": "p2p.hello"
+        },
+        "protocol": {
+          "const": "pallasync/1"
+        },
+        "session_id": {
+          "$ref": "#/$defs/uuidv7"
         },
         "chain_id": {
           "$ref": "#/$defs/base64url43"
         },
         "device_id": {
-          "type": "string"
+          "$ref": "#/$defs/base64url43"
         },
-        "event_type": {
-          "enum": [
-            "invite_accept",
-            "sdp_answer",
-            "ice_candidate"
-          ]
+        "certificate": {
+          "$ref": "#/$defs/deviceCertificate"
         },
-        "sdp_offer": {
-          "type": "string"
+        "control_seq": {
+          "type": "integer",
+          "minimum": 1
         },
-        "sdp_answer": {
-          "type": "string"
+        "control_hash": {
+          "$ref": "#/$defs/base64url43"
         },
-        "sdpMid": {
-          "type": "string"
-        },
-        "sdpMLineIndex": {
-          "type": "integer"
-        },
-        "candidate": {
-          "type": "string"
-        },
-        "ciphertext": {
-          "type": "string"
+        "nonce": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{22}$"
         },
         "signature": {
-          "type": "string"
-        },
-        "public_key": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{86}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "signalingOffer": {
+      "type": "object",
+      "required": [
+        "sdp"
+      ],
+      "properties": {
+        "sdp": {
           "type": "string"
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
+    },
+    "signalingAnswer": {
+      "type": "object",
+      "required": [
+        "sdp",
+        "offer_hash"
+      ],
+      "properties": {
+        "sdp": {
+          "type": "string"
+        },
+        "offer_hash": {
+          "$ref": "#/$defs/base64url43"
+        }
+      },
+      "additionalProperties": false
+    },
+    "signalingIceCandidate": {
+      "type": "object",
+      "required": [
+        "candidate",
+        "remote_description_hash",
+        "sdp_mid",
+        "sdp_mline_index"
+      ],
+      "properties": {
+        "candidate": {
+          "type": "string"
+        },
+        "remote_description_hash": {
+          "$ref": "#/$defs/base64url43"
+        },
+        "sdp_mid": {
+          "type": "string"
+        },
+        "sdp_mline_index": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "peerPresence": {
+      "type": "object",
+      "required": [
+        "device_id",
+        "online",
+        "last_seen_ms",
+        "capabilities",
+        "signaling_generation"
+      ],
+      "properties": {
+        "device_id": {
+          "$ref": "#/$defs/base64url43"
+        },
+        "online": {
+          "type": "boolean"
+        },
+        "last_seen_ms": {
+          "type": "integer"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "signaling_generation": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "p2pPing": {
+      "type": "object",
+      "required": [
+        "type",
+        "timestamp"
+      ],
+      "properties": {
+        "type": {
+          "const": "ping"
+        },
+        "timestamp": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "p2pPong": {
+      "type": "object",
+      "required": [
+        "type",
+        "timestamp"
+      ],
+      "properties": {
+        "type": {
+          "const": "pong"
+        },
+        "timestamp": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "p2pCapabilities": {
+      "type": "object",
+      "required": [
+        "type",
+        "pallasync_versions",
+        "max_frame_size",
+        "max_batch_events",
+        "compression",
+        "schemas"
+      ],
+      "properties": {
+        "type": {
+          "const": "capabilities"
+        },
+        "pallasync_versions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "max_frame_size": {
+          "type": "integer"
+        },
+        "max_batch_events": {
+          "type": "integer"
+        },
+        "compression": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "schemas": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "syncBegin": {
+      "type": "object",
+      "required": [
+        "type",
+        "sync_id",
+        "chain_vector",
+        "control_seq",
+        "control_hash",
+        "key_epoch"
+      ],
+      "properties": {
+        "type": {
+          "const": "sync.begin"
+        },
+        "sync_id": {
+          "$ref": "#/$defs/uuidv7"
+        },
+        "chain_vector": {
+          "$ref": "#/$defs/chainVector"
+        },
+        "control_seq": {
+          "type": "integer"
+        },
+        "control_hash": {
+          "$ref": "#/$defs/base64url43"
+        },
+        "key_epoch": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "syncRequest": {
+      "type": "object",
+      "required": [
+        "type",
+        "ranges"
+      ],
+      "properties": {
+        "type": {
+          "const": "sync.request"
+        },
+        "ranges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "device_id",
+              "from_seq",
+              "to_seq"
+            ],
+            "properties": {
+              "device_id": {
+                "$ref": "#/$defs/base64url43"
+              },
+              "from_seq": {
+                "type": "integer"
+              },
+              "to_seq": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "eventBatch": {
+      "type": "object",
+      "required": [
+        "type",
+        "batch_id",
+        "events",
+        "final"
+      ],
+      "properties": {
+        "type": {
+          "const": "event.batch"
+        },
+        "batch_id": {
+          "$ref": "#/$defs/uuidv7"
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dataEvent"
+          }
+        },
+        "final": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "eventAck": {
+      "type": "object",
+      "required": [
+        "type",
+        "batch_id",
+        "accepted_vector",
+        "rejected"
+      ],
+      "properties": {
+        "type": {
+          "const": "event.ack"
+        },
+        "batch_id": {
+          "$ref": "#/$defs/uuidv7"
+        },
+        "accepted_vector": {
+          "$ref": "#/$defs/chainVector"
+        },
+        "rejected": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "sessionClose": {
+      "type": "object",
+      "required": [
+        "type",
+        "reason",
+        "final_vector",
+        "control_seq",
+        "control_hash"
+      ],
+      "properties": {
+        "type": {
+          "const": "session.close"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "final_vector": {
+          "$ref": "#/$defs/chainVector"
+        },
+        "control_seq": {
+          "type": "integer"
+        },
+        "control_hash": {
+          "$ref": "#/$defs/base64url43"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "oneOf": [
@@ -362,6 +854,36 @@
     },
     {
       "$ref": "#/$defs/signalingEvent"
+    },
+    {
+      "$ref": "#/$defs/p2pHello"
+    },
+    {
+      "$ref": "#/$defs/peerPresence"
+    },
+    {
+      "$ref": "#/$defs/p2pPing"
+    },
+    {
+      "$ref": "#/$defs/p2pPong"
+    },
+    {
+      "$ref": "#/$defs/p2pCapabilities"
+    },
+    {
+      "$ref": "#/$defs/syncBegin"
+    },
+    {
+      "$ref": "#/$defs/syncRequest"
+    },
+    {
+      "$ref": "#/$defs/eventBatch"
+    },
+    {
+      "$ref": "#/$defs/eventAck"
+    },
+    {
+      "$ref": "#/$defs/sessionClose"
     }
   ]
 }

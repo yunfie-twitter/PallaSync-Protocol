@@ -48,7 +48,7 @@ PallaSync Protocolは、Palleria向けに設計されたアカウントレス同
 
 ## セキュリティ
 
-PallaSync 1.0では、次の暗号技術を使用します。
+PallaSync 2.0では、次の暗号技術を使用します。
 
 - Ed25519
 - X25519
@@ -62,12 +62,12 @@ PallaSync 1.0では、次の暗号技術を使用します。
 
 ## 現在の状態
 
-PallaSync Protocol 1.0は、現在 **Draft Standard** です。
+PallaSync Protocol 2.0は、現在 **Draft Standard** です。
 
 正式なStable Standardとして制定する前に、相互運用試験、Fuzzing、脅威モデルの公開、暗号設計レビュー、外部セキュリティ監査を実施する必要があります。
 
 ## ドキュメント
 
-- [PallaSync Protocol 1.0](/PALLASYNC-PROTOCOL)
+- [PallaSync Protocol 2.0](/PALLASYNC-PROTOCOL)
 - [命名移行について](/NAMING-MIGRATION)
-- [JSON Schema](https://github.com/OWNER/PallaSync-Protocol/blob/main/pallasync-v1.schema.json)
+- [JSON Schema](https://github.com/OWNER/PallaSync-Protocol/blob/main/pallasync-v2.schema.json)
