@@ -1241,3 +1241,4 @@ Control Logの同期完了後、双方が `sync.begin` を送信して現在の 
 ### 27.7 接続終了手順 (`session.close`)
 
 同期が完了した場合、いきなりDataChannelを閉じるのではなく、必ず `session.close` メッセージを交換し、最終的なVectorや終了理由 (`sync-complete`) を相手に伝えてから切断します。
+
