@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://palleria.invalid/schemas/pallasync-v2.schema.json",
+  "title": "PallaSync Protocol 2.0 Core Schema",
+  "type": "object",
+  "$defs": {
+    "base64url43": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    },
+    "uuidv7": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "syncRecord": {
+      "type": "object",
+      "required": [
+        "protocol_version",
+        "chain_id",
+        "record_id",
+        "collection_name",
+        "action",
+        "encrypted_payload",
+        "device_id",
+        "created_at_ms",
+        "signature"
+      ],
+      "properties": {
+        "protocol_version": {
+          "const": "2.0"
+        },
+        "chain_id": {
+          "$ref": "#/$defs/base64url43"
+        },
+        "record_id": {
+          "$ref": "#/$defs/uuidv7"
+        },
+        "collection_name": {
+          "type": "string"
+        },
+        "action": {
+          "enum": [
+            "upsert",
+            "delete"
+          ]
+        },
+        "encrypted_payload": {
+          "type": "string"
+        },
+        "device_id": {
+          "$ref": "#/$defs/base64url43"
+        },
+        "created_at_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "signature": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{86}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "deviceRecord": {
+      "type": "object",
+      "required": [
+        "protocol_version",
+        "chain_id",
+        "device_id",
+        "encrypted_device_name",
+        "device_public_key",
+        "created_at_ms",
+        "signature"
+      ],
+      "properties": {
+        "protocol_version": {
+          "const": "2.0"
+        },
+        "chain_id": {
+          "$ref": "#/$defs/base64url43"
+        },
+        "device_id": {
+          "$ref": "#/$defs/base64url43"
+        },
+        "encrypted_device_name": {
+          "type": "string"
+        },
+        "device_public_key": {
+          "$ref": "#/$defs/base64url43"
+        },
+        "created_at_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "signature": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{86}$"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/syncRecord"
+    },
+    {
+      "$ref": "#/$defs/deviceRecord"
+    }
+  ]
+}

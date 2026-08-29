@@ -1,9 +1,9 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "PallaSync Protocol API",
-    "description": "API specification for PallaSync, a decentralized, end-to-end encrypted device synchronization protocol.",
-    "version": "1.0.0"
+    "title": "PallaSync Protocol API v2",
+    "description": "API specification for PallaSync v2, a Brave Sync-like decentralized, end-to-end encrypted device synchronization protocol based on Sync Chains.",
+    "version": "2.0.0"
   },
   "servers": [
     {
@@ -11,39 +11,48 @@
     }
   ],
   "paths": {
-    "/pallasync/v1/events": {
+    "/pallasync/v2/chains/{chainId}/records": {
       "post": {
-        "summary": "Push a Data Event",
-        "description": "Publishes a new encrypted DataEvent or RequestEnvelope to the synchronization chain.",
-        "operationId": "pushEvent",
+        "summary": "Push Sync Records",
+        "description": "Pushes new encrypted SyncRecords to the synchronization chain.",
+        "operationId": "pushRecords",
+        "parameters": [
+          {
+            "name": "chainId",
+            "in": "path",
+            "required": true,
+            "description": "The base64-url encoded Chain ID derived from the seed phrase.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
-            "application/vnd.palleria.sync+json": {
+            "application/vnd.palleria.sync.v2+json": {
               "schema": {
-                "$ref": "#/components/schemas/EventEnvelope"
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SyncRecord"
+                }
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Event successfully accepted and enqueued."
+            "description": "Records successfully accepted."
           },
           "400": {
-            "description": "Invalid event format or signature."
-          },
-          "409": {
-            "description": "Event conflict (e.g., duplicated sequence)."
+            "description": "Invalid format or signature."
           }
         }
-      }
-    },
-    "/pallasync/v1/events/{chainId}": {
+      },
       "get": {
-        "summary": "Fetch Chain Events",
-        "description": "Retrieves the sequence of encrypted DataEvents for a specific chain.",
-        "operationId": "fetchEvents",
+        "summary": "Fetch Sync Records",
+        "description": "Retrieves the sequence of encrypted SyncRecords for a specific chain.",
+        "operationId": "fetchRecords",
         "parameters": [
           {
             "name": "chainId",
@@ -55,10 +64,80 @@
             }
           },
           {
-            "name": "since",
+            "name": "since_ms",
             "in": "query",
             "required": false,
-            "description": "Optional sequence number or timestamp to fetch events from.",
+            "description": "Optional timestamp (ms) to fetch records from.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of SyncRecords.",
+            "content": {
+              "application/vnd.palleria.sync.v2+json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SyncRecord"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Chain not found."
+          }
+        }
+      }
+    },
+    "/pallasync/v2/chains/{chainId}/devices": {
+      "post": {
+        "summary": "Register a Device",
+        "description": "Registers a new device to the sync chain by pushing a DeviceRecord.",
+        "operationId": "registerDevice",
+        "parameters": [
+          {
+            "name": "chainId",
+            "in": "path",
+            "required": true,
+            "description": "The base64-url encoded Chain ID.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/vnd.palleria.sync.v2+json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceRecord"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Device successfully registered."
+          },
+          "400": {
+            "description": "Invalid format or signature."
+          }
+        }
+      },
+      "get": {
+        "summary": "List Devices",
+        "description": "Retrieves the list of devices registered to the chain.",
+        "operationId": "fetchDevices",
+        "parameters": [
+          {
+            "name": "chainId",
+            "in": "path",
+            "required": true,
+            "description": "The base64-url encoded Chain ID.",
             "schema": {
               "type": "string"
             }
@@ -66,13 +145,13 @@
         ],
         "responses": {
           "200": {
-            "description": "Array of DataEvents.",
+            "description": "Array of DeviceRecords.",
             "content": {
-              "application/vnd.palleria.sync+json": {
+              "application/vnd.palleria.sync.v2+json": {
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/EventEnvelope"
+                    "$ref": "#/components/schemas/DeviceRecord"
                   }
                 }
               }
@@ -87,13 +166,62 @@
   },
   "components": {
     "schemas": {
-      "EventEnvelope": {
-        "description": "Matches the 'dataEvent' or 'requestEnvelope' definitions in the JSON schema.",
+      "SyncRecord": {
+        "description": "Matches the 'syncRecord' definition in the JSON schema.",
         "type": "object",
         "properties": {
           "protocol_version": {
             "type": "string",
-            "example": "1.0"
+            "example": "2.0"
+          },
+          "chain_id": {
+            "type": "string"
+          },
+          "record_id": {
+            "type": "string"
+          },
+          "collection_name": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "upsert",
+              "delete"
+            ]
+          },
+          "encrypted_payload": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "created_at_ms": {
+            "type": "integer"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocol_version",
+          "chain_id",
+          "record_id",
+          "collection_name",
+          "action",
+          "encrypted_payload",
+          "device_id",
+          "created_at_ms",
+          "signature"
+        ]
+      },
+      "DeviceRecord": {
+        "description": "Matches the 'deviceRecord' definition in the JSON schema.",
+        "type": "object",
+        "properties": {
+          "protocol_version": {
+            "type": "string",
+            "example": "2.0"
           },
           "chain_id": {
             "type": "string"
@@ -101,18 +229,28 @@
           "device_id": {
             "type": "string"
           },
-          "event_type": {
-            "type": "string",
-            "enum": ["data", "invite", "invite_accept"]
-          },
-          "ciphertext": {
+          "encrypted_device_name": {
             "type": "string"
+          },
+          "device_public_key": {
+            "type": "string"
+          },
+          "created_at_ms": {
+            "type": "integer"
           },
           "signature": {
             "type": "string"
           }
         },
-        "required": ["protocol_version", "chain_id", "device_id", "event_type", "ciphertext", "signature"]
+        "required": [
+          "protocol_version",
+          "chain_id",
+          "device_id",
+          "encrypted_device_name",
+          "device_public_key",
+          "created_at_ms",
+          "signature"
+        ]
       }
     }
   }
