@@ -24,7 +24,7 @@ export default defineConfig({
         text: 'PallaSync Protocol',
         items: [
           { text: '概要', link: '/' },
-          { text: '仕様書 1.0', link: '/PALLASYNC-PROTOCOL' },
+          { text: '仕様書', link: '/PALLASYNC-PROTOCOL' },
           { text: '命名移行', link: '/NAMING-MIGRATION' }
         ]
       }
