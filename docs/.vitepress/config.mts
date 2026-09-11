@@ -15,7 +15,7 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: 'ホーム', link: '/' },
-      { text: '仕様書', link: '/PALLASYNC-PROTOCOL' },
+      { text: 'PallaSync Protocol 1.0', link: '/PALLASYNC-PROTOCOL' },
       { text: '命名移行', link: '/NAMING-MIGRATION' }
     ],
 
