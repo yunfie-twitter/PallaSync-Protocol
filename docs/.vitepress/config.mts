@@ -16,7 +16,8 @@ export default defineConfig({
     nav: [
       { text: 'ホーム', link: '/' },
       { text: '仕様書', link: '/v2.1' },
-      { text: '命名移行', link: '/NAMING-MIGRATION' }
+      { text: '命名移行', link: '/NAMING-MIGRATION' },
+      { text: 'Palleria', link: 'https://yunfi.f5.si/Palleria/' },
     ],
 
     sidebar: [
