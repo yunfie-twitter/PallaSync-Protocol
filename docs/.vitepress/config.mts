@@ -16,6 +16,8 @@ export default defineConfig({
     nav: [
       { text: 'ホーム', link: '/' },
       { text: 'PallaSync Protocol 1.0', link: '/PALLASYNC-PROTOCOL' },
+      { text: 'PallaSync Protocol 2.0', link: '/PALLASYNC-PROTOCOL-V2' },
+      { text: 'PallaSync Protocol 2.1', link: '/PALLASYNC-PROTOCOL-V2.1' },
       { text: '命名移行', link: '/NAMING-MIGRATION' }
     ],
 
