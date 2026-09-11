@@ -8,7 +8,7 @@ hero:
   actions:
     - theme: brand
       text: "仕様書を読む"
-      link: "/PALLASYNC-PROTOCOL"
+      link: "/v2.1"
     - theme: alt
       text: "GitHub"
       link: "https://github.com/yunfie-twitter/PallaSync-Protocol"
