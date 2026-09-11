@@ -1,0 +1,1066 @@
+---
+title: "PallaSync Protocol 2.1"
+description: "アカウント不要・E2EE 同期プロトコル（改訂版）"
+layout: doc
+outline: deep
+lastUpdated: true
+editLink: false
+prev: false
+next: false
+---
+
+# PallaSync Protocol 2.1
+
+- Document ID: `PALLASYNC-2.1-R1`
+- Protocol identifier: `pallasync/2`
+- Protocol version: `2.1`
+- Status: Draft Standard (Revised)
+- Default media type: `application/vnd.palleria.sync.v2+json`
+- Character encoding: UTF-8
+- JSON canonicalization: JSON Canonicalization Scheme (JCS, RFC 8785)
+- Transport: HTTPS only
+- Security model: accountless, end-to-end encrypted, capability-based access
+- Backward compatibility: PallaSync 2.0 records are accepted but deprecated
+- Normative terms: **MUST**, **MUST NOT**, **REQUIRED**, **SHOULD**, **SHOULD NOT**, **MAY** are to be interpreted as described by RFC 2119 / RFC 8174.
+
+> [!IMPORTANT]
+> This document is normative. Implementations MUST NOT treat server-side storage, source comments, or implementation behavior as authoritative when they conflict with this specification.
+>
+> Implementers MUST use vetted cryptographic libraries. Cryptographic primitives MUST NOT be implemented ad hoc.
+>
+> **Backward compatibility note**: PallaSync 2.0 records MAY be accepted by 2.1 implementations for migration purposes, but 2.0 clients MUST NOT write new records to a 2.1 chain without explicit migration procedure.
+
+---
+
+## 1. Scope
+
+PallaSync is an accountless synchronization protocol for small-to-medium structured application data. It provides end-to-end confidentiality, client-verifiable authenticity, replay-resistant server authorization, deterministic chain recovery from a mnemonic secret, and convergent conflict handling.
+
+A PallaSync server is a blind relay and ciphertext store. It does not decrypt payloads and does not interpret application schemas. The server nevertheless validates request structure, enforces capability tokens, verifies request signatures, applies rate and size limits, and prevents unauthorized mutation.
+
+PallaSync is not a general file synchronization protocol. Large binary objects MUST be stored out of band and referenced by an application-defined encrypted metadata record.
+
+### 1.1 Backward Compatibility
+
+PallaSync 2.1 implementations MUST accept PallaSync 2.0 records for reading and migration. 2.0 records use deterministic nonces and lack mandatory signature verification; therefore, 2.1 clients MUST treat 2.0 records as **untrusted legacy data** and MUST NOT rely on their authenticity without application-level validation.
+
+New record creation in 2.1 MUST use random nonces and mandatory signature verification. 2.0 record creation is deprecated and MUST NOT be used in new deployments.
+
+---
+
+## 2. Threat Model
+
+The protocol protects plaintext content from the server, network observers, and parties without the chain secret. TLS protects transport metadata in transit; it does not hide metadata visible to the server, such as chain identifier, approximate record sizes, request timing, and IP address.
+
+The protocol assumes an attacker may read, reorder, replay, delete, delay, or inject server-stored records. Clients MUST verify every received record before decrypting or applying it. Availability is not guaranteed: a malicious server can withhold data or deny service.
+
+Possession of a recovery mnemonic grants authority to join and administer its chain. A lost mnemonic cannot be recovered by the protocol. A compromised mnemonic requires migration to a new chain.
+
+### 2.1 Trust Establishment
+
+Joining a chain requires **authenticated invitation** through one of the following channels:
+
+- QR code displayed on an already-joined device, containing invitation bundle and inviter device public key fingerprint.
+- Local encrypted transfer (Bluetooth, NFC, local HTTP) with user-verified device identity.
+- Manually verified backup bundle with checksum confirmation.
+
+The joining device MUST display the inviter device's public key fingerprint (e.g., first 8 characters of Base64URL-encoded SHA-256 hash) and require explicit user confirmation before proceeding. This prevents man-in-the-middle attacks where a malicious server provides a forged invitation.
+
+---
+
+## 3. Terminology
+
+| Term | Meaning |
+|---|---|
+| Chain | A synchronization namespace derived from one recovery secret and public chain parameters |
+| Chain parameters | Public, immutable parameters required to derive chain keys |
+| Device | One installation participating in a chain |
+| Device key | A device-unique Ed25519 signing key pair |
+| Root key | Secret key material deterministically derived from the mnemonic and chain parameters |
+| Capability token | A short-lived signed authorization proof accepted by the server |
+| Record | An immutable encrypted synchronization event |
+| Cursor | An opaque, server-issued position used for incremental record retrieval |
+| Tombstone | A signed record declaring logical deletion of an entity |
+| Epoch | A monotonic key-generation identifier; fixed to `0` in PallaSync 2.1 |
+| Admin key | Ed25519 key pair derived from mnemonic for administrative operations |
+| Invitation bundle | Signed data structure authorizing a new device to join the chain |
+
+---
+
+## 4. Wire Conventions
+
+### 4.1 JSON
+
+All request and response bodies MUST be UTF-8 JSON conforming to the I-JSON subset. Object member names MUST be unique. Integers MUST be representable exactly by IEEE-754 binary64; implementations SHOULD constrain timestamps and counters to signed 64-bit integers and reject values outside the interoperable JSON range when serializing through JavaScript environments.
+
+All values used as signed input MUST be JCS-canonicalized. JCS produces a deterministic representation appropriate for hashing and signatures.
+
+### 4.2 Binary Encodings
+
+- Base64URL values MUST use RFC 4648 section 5 alphabet and MUST omit `=` padding.
+- UUID values MUST use canonical lowercase hyphenated UUID text.
+- Hash digests are binary unless explicitly encoded.
+- All protocol label strings are ASCII and include a terminating NUL byte where shown.
+
+### 4.3 Time
+
+`*_at_ms`, `issued_at_ms`, and `expires_at_ms` are Unix milliseconds. Clients MUST tolerate bounded device clock skew. Servers SHOULD accept capability tokens whose issued time is no more than 5 minutes in the future and whose expiry time is no more than 24 hours after issuance.
+
+---
+
+## 5. Cryptographic Algorithms
+
+| Purpose | Algorithm | Notes |
+|---|---|---|
+| Recovery mnemonic | BIP39 | 256-bit entropy, English word list, 24 words |
+| Mnemonic seed | BIP39 PBKDF2-HMAC-SHA512 | User-supplied BIP39 passphrase supported |
+| Root derivation | HKDF-SHA256 | RFC 5869 |
+| Payload encryption | XChaCha20-Poly1305 | 192-bit random nonce |
+| Signature | Ed25519 | Direct signing, no pre-hash |
+| Hash | SHA-256 | For chain ID and token body hash |
+| Canonical serialization | JCS / RFC 8785 | For all signed data |
+| Randomness | OS CSPRNG | Platform secure random generator |
+
+Implementations MUST use XChaCha20-Poly1305 for newly created records. XChaCha20-Poly1305 permits a randomly generated 24-byte nonce per encryption and avoids the catastrophic consequences of accidental nonce reuse associated with deterministic nonce construction.
+
+### 5.1 Signature Context
+
+All Ed25519 signatures MUST include a context string to prevent cross-protocol attacks. The signature input is:
+
+```
+context_string || JCS(object_without_signature)
+```
+
+Where `context_string` is one of:
+
+| Object Type | Context String |
+|---|---|
+| SyncRecord | `PALLASYNC-SYNC-RECORD-v2.1\0` |
+| DeviceRecord | `PALLASYNC-DEVICE-RECORD-v2.1\0` |
+| InvitationBundle | `PALLASYNC-INVITATION-v2.1\0` |
+| CapabilityToken | `PALLASYNC-CAPABILITY-v2.1\0` |
+| AdminOperation | `PALLASYNC-ADMIN-OP-v2.1\0` |
+
+This ensures that a signature valid for one object type cannot be replayed as another type.
+
+---
+
+## 6. Chain Creation and Key Derivation
+
+### 6.1 Chain Parameters
+
+A new chain creator MUST generate a 32-byte random `chain_salt`. The salt is public and MUST be retained by every joined device. It is not a secret and may be stored on the server.
+
+```json
+{
+  "protocol_version": "2.1",
+  "chain_id": "<Base64URL SHA-256 digest, 43 characters>",
+  "chain_salt": "<Base64URL, 32 bytes>",
+  "created_at_ms": 1722837600000,
+  "creator_device_id": "<UUID>",
+  "creator_public_key": "<Base64URL, 32 bytes>",
+  "admin_public_key": "<Base64URL, 32 bytes>",
+  "signature": "<Base64URL, 64 bytes>"
+}
+```
+
+`chain_id` MUST be calculated as follows:
+
+```
+root_seed = BIP39.to_seed(mnemonic, bip39_passphrase)
+chain_id_bytes = SHA-256(
+    b"PALLASYNC-CHAIN-ID-v2.1\0" || chain_salt || root_seed
+)
+chain_id = Base64URL(chain_id_bytes)
+```
+
+A client joining by mnemonic MUST obtain `chain_salt` through an authenticated out-of-band invitation, QR payload, backup bundle, or another trusted channel. The mnemonic alone is insufficient to identify a chain when the same mnemonic is intentionally reused with different salts.
+
+### 6.2 Root Keys
+
+```
+root_seed = BIP39.to_seed(mnemonic, bip39_passphrase)
+prk = HKDF-Extract(
+    salt = chain_salt,
+    IKM  = root_seed
+)
+
+// Epoch key (epoch is fixed to 0 in PallaSync 2.1)
+epoch_key = HKDF-Expand(prk,
+    info=b"PALLASYNC-v2.1\0epoch\0" || uint32_be(0), L=32)
+
+// Record encryption key (derived from epoch key)
+record_key = HKDF-Expand(epoch_key,
+    info=b"PALLASYNC-v2.1\0record\0", L=32)
+
+// Device name encryption key
+device_name_key = HKDF-Expand(epoch_key,
+    info=b"PALLASYNC-v2.1\0device-name\0", L=32)
+
+// Invitation authentication key
+invite_key = HKDF-Expand(prk,
+    info=b"PALLASYNC-v2.1\0invite-auth\0", L=32)
+
+// Administrative Ed25519 key
+admin_seed = HKDF-Expand(prk,
+    info=b"PALLASYNC-v2.1\0admin-ed25519\0", L=32)
+admin_key = Ed25519.SigningKey::from_bytes(admin_seed)
+admin_public = admin_key.verifying_key()
+```
+
+`invite_key` MUST remain secret. `admin_public` MAY be included in public chain metadata. The separate labels are mandatory domain separation and MUST match exactly.
+
+**Note**: `epoch_key` is fixed to epoch 0 in PallaSync 2.1. Any record with `epoch != 0` MUST be rejected. Key rotation is not part of this version.
+
+### 6.3 Device Keys
+
+Each device MUST generate an independent random Ed25519 private key. Device keys MUST NOT be deterministically derived from the mnemonic. Losing one device key therefore does not expose other devices, while mnemonic recovery permits a replacement device to join.
+
+A device private key MUST be stored in platform secure storage where available. Android implementations SHOULD use Android Keystore-backed protection and MUST NOT store plaintext private keys in ordinary preferences or databases.
+
+### 6.4 BIP39 Passphrase Handling
+
+If a BIP39 passphrase is used:
+
+- The passphrase MUST be UTF-8 normalized (NFC) before PBKDF2.
+- The passphrase is part of the chain secret; losing it prevents chain recovery.
+- UI MUST clearly indicate whether a passphrase is required for backup restoration.
+- An empty passphrase (`""`) is valid and is the default.
+
+Implementations MUST validate BIP39 mnemonic checksum and reject invalid mnemonics.
+
+---
+
+## 7. Invitations and Enrollment
+
+### 7.1 Invitation Bundle
+
+A joining device requires an invitation bundle from an existing authorized device. The bundle MUST be transferred through a user-authenticated channel, such as a QR code shown on an already joined device, encrypted local transfer, or manually verified backup.
+
+```json
+{
+  "protocol_version": "2.1",
+  "chain_id": "<Base64URL>",
+  "chain_salt": "<Base64URL, 32 bytes>",
+  "server_url": "https://sync.example.invalid",
+  "invitation_id": "<UUID>",
+  "issued_at_ms": 1722837600000,
+  "expires_at_ms": 1722924000000,
+  "one_time": true,
+  "inviter_device_id": "<UUID>",
+  "inviter_public_key": "<Base64URL, 32 bytes>",
+  "inviter_signature": "<Base64URL, 64 bytes>"
+}
+```
+
+The inviter signs the JCS serialization of the bundle excluding `inviter_signature` with its device signing key, using context string `PALLASYNC-INVITATION-v2.1\0`.
+
+The joining device MUST:
+
+1. Verify `inviter_signature` using `inviter_public_key`.
+2. Display `inviter_public_key` fingerprint (first 8 Base64URL characters of SHA-256 hash) for user confirmation.
+3. Verify `chain_id` matches the expected chain (if known).
+4. Verify `expires_at_ms` has not passed.
+5. Only after user confirms device identity, proceed with enrollment.
+
+An application MAY package the mnemonic and invitation bundle together for backup restoration, but MUST clearly warn that this grants full chain access.
+
+### 7.2 Enrollment Request
+
+The joining device generates its device key pair and device ID, then sends an enrollment request authenticated by an existing device or the chain admin key. The server MUST reject ordinary record writes by devices not in the active device registry.
+
+```json
+{
+  "protocol_version": "2.1",
+  "chain_id": "<Base64URL>",
+  "device_id": "<UUID>",
+  "device_public_key": "<Base64URL, 32 bytes>",
+  "encrypted_device_name": "<Base64URL>",
+  "device_name_nonce": "<Base64URL, 24 bytes>",
+  "created_at_ms": 1722837600000,
+  "enrollment_proof": "<Base64URL, 64 bytes>",
+  "invitation_id": "<UUID or null>",
+  "signature": "<Base64URL, 64 bytes>"
+}
+```
+
+`enrollment_proof` is an HMAC-SHA256 over the JCS serialization excluding `enrollment_proof` and `signature`, using `invite_key`. `signature` is made by the new device key over the JCS serialization excluding `signature`, using context string `PALLASYNC-DEVICE-RECORD-v2.1\0`. The server verifies both values. The HMAC proves knowledge of the chain secret without revealing it, and the device signature proves possession of the announced device private key.
+
+Servers MUST consume a one-time invitation ID atomically when configured to enforce one-time enrollment. If an application does not need invitation IDs, it MAY use the HMAC enrollment proof alone, but it loses one-time enrollment semantics.
+
+### 7.3 Enrollment Response
+
+On successful enrollment, the server returns `201 Created` with the canonical stored DeviceRecord. The response includes:
+
+```json
+{
+  "device_id": "<UUID>",
+  "device_public_key": "<Base64URL, 32 bytes>",
+  "status": "active",
+  "created_at_ms": 1722837600000,
+  "approved_by": "<UUID or null>",
+  "approval_signature": "<Base64URL, 64 bytes or null>"
+}
+```
+
+`approved_by` and `approval_signature` are optional fields for future multi-admin approval workflows. In PallaSync 2.1, they MAY be `null`.
+
+---
+
+## 8. Authorization Tokens
+
+### 8.1 Capability Token
+
+Each server request other than public chain-parameter discovery MUST include an `Authorization: PallaSync <token>` header. A token is a Base64URL-encoded JCS JSON object:
+
+```json
+{
+  "v": 1,
+  "chain_id": "<Base64URL>",
+  "device_id": "<UUID>",
+  "method": "POST",
+  "path": "/pallasync/v2/chains/<chain_id>/records",
+  "query": "",
+  "body_sha256": "<Base64URL, 32 bytes>",
+  "issued_at_ms": 1722837600000,
+  "expires_at_ms": 1722837900000,
+  "nonce": "<Base64URL, 16 random bytes>",
+  "signature": "<Base64URL, 64 bytes>"
+}
+```
+
+The token is signed with the requesting device private key over its JCS serialization excluding `signature`, using context string `PALLASYNC-CAPABILITY-v2.1\0`. The server MUST verify the device is active, verify the signature using the registered device public key, check all bound fields, enforce token expiration, and reject a reused `(chain_id, device_id, nonce)` until the token expires.
+
+The token binds the method, exact request path (origin-form without query string), query string (if present), and SHA-256 of the raw HTTP request body. A token MUST NOT be valid for a different body, endpoint, device, or chain.
+
+**Path canonicalization**:
+
+- `path` is the HTTP origin-form request target (e.g., `/pallasync/v2/chains/<chain_id>/records`).
+- Query string, if present, MUST be included in the `query` field, not in `path`.
+- Path MUST be percent-encoded per RFC 3986.
+- HTTP method MUST be uppercase.
+
+**Body hash**:
+
+- `body_sha256` is SHA-256 of the exact HTTP request body bytes (before any transfer encoding).
+- For requests with no body, `body_sha256` is SHA-256 of empty string.
+- Servers MUST compute body hash on the received bytes, not on parsed JSON.
+
+### 8.2 Administrative Authorization
+
+The following operations require an `admin_proof`: chain deletion, device revocation, and server URL migration. `admin_proof` is an Ed25519 signature made with `admin_key` over the JCS representation of the operation-specific request excluding `admin_proof`, using context string `PALLASYNC-ADMIN-OP-v2.1\0`.
+
+The server MUST verify `admin_proof` against the `admin_public` stored in chain parameters. A device capability token alone MUST NOT authorize administrative operations.
+
+---
+
+## 9. Encrypted Records
+
+### 9.1 SyncRecord
+
+Records are immutable. A client MUST generate a new `record_id` and a fresh encryption nonce every time it creates a record, including retries that change any encrypted or signed content.
+
+```json
+{
+  "protocol_version": "2.1",
+  "chain_id": "<Base64URL, 43 characters>",
+  "record_id": "<UUIDv7>",
+  "epoch": 0,
+  "collection_name": "<application collection identifier>",
+  "action": "upsert",
+  "encrypted_payload": "<Base64URL ciphertext plus 16-byte tag>",
+  "payload_nonce": "<Base64URL, 24 bytes>",
+  "device_id": "<UUID>",
+  "lamport": 42,
+  "created_at_ms": 1722837600000,
+  "signature": "<Base64URL, 64 bytes>"
+}
+```
+
+Allowed `action` values are `upsert` and `delete`. Servers MUST reject unknown actions. Clients MUST reject records with an unsupported protocol version, unknown epoch, malformed binary field, invalid UUID, invalid signature, or invalid authenticated decryption tag.
+
+### 9.2 Encryption
+
+The plaintext is the JCS serialization of `DataPayload`. The authenticated additional data is the JCS serialization of the following object:
+
+```json
+{
+  "protocol_version": "2.1",
+  "chain_id": "<chain_id>",
+  "record_id": "<record_id>",
+  "epoch": 0,
+  "collection_name": "<collection_name>",
+  "action": "<action>",
+  "device_id": "<device_id>",
+  "lamport": 42,
+  "created_at_ms": 1722837600000
+}
+```
+
+```
+payload_nonce = CSPRNG(24 bytes)
+epoch_key = HKDF-Expand(prk,
+  info=b"PALLASYNC-v2.1\0epoch\0" || uint32_be(epoch), L=32)
+record_key = HKDF-Expand(epoch_key,
+  info=b"PALLASYNC-v2.1\0record\0", L=32)
+ciphertext = XChaCha20Poly1305.encrypt(
+  key=record_key,
+  nonce=payload_nonce,
+  msg=JCS(DataPayload),
+  aad=JCS(RecordAAD))
+```
+
+A client MUST NOT decrypt before verifying the outer record signature. A client MUST verify that the decrypted payload duplicates and agrees with the outer `collection_name`, `action`, `lamport`, and logical timestamp fields where present.
+
+### 9.3 Record Signing
+
+The signing input is:
+
+```
+PALLASYNC-SYNC-RECORD-v2.1\0 || JCS(SyncRecord excluding signature)
+```
+
+The signer MUST sign this with Ed25519 (direct, no pre-hash). Receivers MUST perform the corresponding verification using the public key registered for `device_id` before decryption or application.
+
+### 9.4 DataPayload
+
+```json
+{
+  "schema": "palleria.favorite_tag/2",
+  "entity_id": "user_favorite_tags",
+  "operation": "upsert",
+  "context": {},
+  "lamport": 42,
+  "created_at_ms": 1722837600000,
+  "body": {}
+}
+```
+
+The payload `schema` MUST match outer `collection_name`, and `operation` MUST match outer `action`. `entity_id` MUST be non-empty and at most 256 UTF-8 bytes. Applications MUST define validation rules for each `body` schema before writing and applying it.
+
+### 9.5 Backward Compatibility with PallaSync 2.0
+
+PallaSync 2.0 records use the following differences:
+
+| Field | PallaSync 2.0 | PallaSync 2.1 |
+|---|---|---|
+| `protocol_version` | `"2.0"` | `"2.1"` |
+| `payload_nonce` | Deterministic (SHA-256) | Random (CSPRNG) |
+| Signature verification | Optional (PoC) | Mandatory |
+| Context string | None | Required |
+| Epoch | Implicit 0 | Explicit 0 |
+
+2.1 clients MAY read 2.0 records for migration but MUST display a warning that 2.0 records lack cryptographic authenticity guarantees. 2.0 clients MUST NOT write new records to a 2.1 chain.
+
+---
+
+## 10. Device Registry
+
+### 10.1 DeviceRecord
+
+```json
+{
+  "protocol_version": "2.1",
+  "chain_id": "<Base64URL>",
+  "device_id": "<UUID>",
+  "device_public_key": "<Base64URL, 32 bytes>",
+  "encrypted_device_name": "<Base64URL>",
+  "device_name_nonce": "<Base64URL, 24 bytes>",
+  "status": "active",
+  "created_at_ms": 1722837600000,
+  "updated_at_ms": 1722837600000,
+  "signature": "<Base64URL, 64 bytes>"
+}
+```
+
+`status` is `active` or `revoked`. A DeviceRecord is signed by the device key over the JCS object excluding `signature`, using context string `PALLASYNC-DEVICE-RECORD-v2.1\0`. A device MUST NOT change its `device_public_key` for an existing `device_id`; replacement hardware MUST obtain a new device ID and enrollment.
+
+The device name MUST be encrypted using `record_key` at the record epoch with XChaCha20-Poly1305. Its AAD MUST include `chain_id`, `device_id`, `device_public_key`, and `updated_at_ms` in a JCS object with a fixed type field `"PALLASYNC-DEVICE-NAME-v2.1"`.
+
+### 10.2 Revocation
+
+An administrator revokes a device through a signed administrative request. The server MUST mark the device as revoked, reject all future capability tokens from it, and retain the revoked DeviceRecord for signature verification of historical records.
+
+Revocation prevents future server writes but cannot prevent a compromised device from decrypting material it already downloaded. It also cannot retroactively provide forward secrecy for historical records.
+
+### 10.3 Device Key Loss Recovery
+
+If a device loses its private key (e.g., Android Keystore corruption):
+
+1. User MUST enroll a new device with a new `device_id`.
+2. Administrator MUST revoke the old device using `admin_proof`.
+3. Old device's historical records remain valid and verifiable.
+4. New device receives a new random Ed25519 key pair.
+
+Device ID is tied to the specific key pair; key rotation on the same device ID is not supported in PallaSync 2.1.
+
+---
+
+## 11. Conflict Handling
+
+PallaSync defines a deterministic last-write-wins register for singular entities and observed-remove sets for set-like values. Applications MUST select one declared conflict type per schema and MUST NOT rely on arrival order.
+
+### 11.1 Ordering Tuple
+
+Every event has the total-ordering tuple:
+
+```
+order = (lamport, created_at_ms, device_id, record_id)
+```
+
+Comparison is lexicographic with higher values winning. `device_id` and `record_id` are compared as lowercase UTF-8 byte strings. `created_at_ms` is only a tie-breaker; device clocks MUST NOT be the primary source of conflict order.
+
+On sending an event, a device MUST set `lamport = local_lamport + 1` and persist it atomically with the outbox record. On receiving a valid event, a device MUST update `local_lamport = max(local_lamport, event.lamport)` before creating later events.
+
+### 11.2 LWW Register
+
+For schemas declared `lww-register`, each `(schema, entity_id)` resolves to the valid non-superseded event with the maximum ordering tuple. `delete` is a tombstone and competes exactly like `upsert`. A tombstone MUST be retained for at least the server retention window to prevent stale resurrection.
+
+### 11.3 Observed-Remove Set
+
+For schemas declared `or-set`, each logical element is represented by a unique add tag `(device_id, record_id)`. A remove operation carries the set of observed add tags to remove. A receiver MUST remove only named tags; concurrent unseen adds survive. The application payload format MUST explicitly contain `adds` and `removes` rather than using an unordered `distinct()` merge.
+
+### 11.4 Declared Schema Policies
+
+| Schema | Conflict Type | Notes |
+|---|---|---|
+| `palleria.favorite_tag/2` | OR-Set | Tag strings are normalized by application policy before use |
+| `palleria.search_history/2` | LWW register | Body contains ordered query entries and bounded retention policy |
+| `palleria.mute_settings/2` | OR-Set | Separate OR-Sets for tags, users, and illustrations |
+| `palleria.view_history/2` | LWW map | Keyed by illustration ID; values carry LWW ordering metadata |
+| `pallasync.device/2` | Administrative | Device revocation is server-authoritative after admin proof |
+| `palleria.chain/2` | Administrative | Chain deletion requires admin proof |
+
+Schemas ending in `/1` are legacy (PallaSync 2.0) and SHOULD NOT be emitted by new clients. A migration client MAY read them only under a documented application migration procedure.
+
+---
+
+## 12. HTTP API
+
+Base path: `/pallasync/v2/`.
+
+All endpoints MUST require HTTPS. Servers MUST send `Content-Type: application/vnd.palleria.sync.v2+json; charset=utf-8` for JSON responses and MUST reject a request body larger than configured limits before parsing it.
+
+### 12.1 Error Format
+
+All non-empty error responses MUST use:
+
+```json
+{
+  "type": "https://pallasync.example/errors/invalid-request",
+  "title": "Invalid request",
+  "status": 400,
+  "code": "invalid_field",
+  "detail": "record_id must be a UUIDv7",
+  "request_id": "<server-generated identifier>"
+}
+```
+
+| Status | Code Examples | Client Behavior |
+|---|---|---|
+| 400 | `invalid_json`, `invalid_field`, `invalid_signature` | Do not retry unchanged request |
+| 401 | `missing_authorization`, `invalid_token`, `expired_token` | Generate a new token and retry once if appropriate |
+| 403 | `device_revoked`, `not_enrolled`, `admin_proof_required` | Stop; require user or enrollment action |
+| 404 | `chain_not_found` | Treat as unavailable; do not delete local chain automatically |
+| 409 | `duplicate_record`, `cursor_invalid`, `device_key_conflict` | Reconcile state; retry only with corrected request |
+| 410 | `chain_deleted` | Delete local chain state after user-visible confirmation policy |
+| 413 | `payload_too_large` | Split, compact, or reject locally |
+| 429 | `rate_limited` | Retry after `Retry-After` |
+| 500/503 | `internal_error`, `temporarily_unavailable` | Exponential backoff with jitter |
+
+### 12.2 Public Chain Parameters
+
+`GET /pallasync/v2/chains/:chain_id/parameters`
+
+This endpoint MAY be public because it reveals only public parameters. It returns chain metadata, `chain_salt`, `admin_public_key`, and deletion status. Clients MUST authenticate `chain_salt` through an invitation or trusted backup before using it to derive chain keys; a server response alone is not sufficient against a malicious server.
+
+### 12.3 Enroll Device
+
+`POST /pallasync/v2/chains/:chain_id/devices/enroll`
+
+The body is an enrollment request. The server MUST validate structural fields, enrollment HMAC, new-device signature, invitation policy, and device-ID uniqueness. On success it stores an active DeviceRecord and returns `201 Created` with the canonical stored record.
+
+### 12.4 List Devices
+
+`GET /pallasync/v2/chains/:chain_id/devices?cursor=<opaque>&limit=<1..200>`
+
+Requires a capability token from an active device. Returns paginated DeviceRecords, including revoked records, and an opaque `next_cursor` or `null`.
+
+### 12.5 Update Own Device Metadata
+
+`PUT /pallasync/v2/chains/:chain_id/devices/:device_id`
+
+Requires a capability token for exactly `device_id`. The server MUST reject attempts to change `device_public_key`, `created_at_ms`, or status through this endpoint. The device signature and request authorization token are both required.
+
+### 12.6 Revoke Device
+
+`POST /pallasync/v2/chains/:chain_id/devices/:device_id/revoke`
+
+Requires an active device capability token and `admin_proof`. The request MUST include a unique operation ID, target device ID, timestamp, and administrative signature. The operation is idempotent.
+
+### 12.7 Upload Records
+
+`POST /pallasync/v2/chains/:chain_id/records`
+
+Body:
+
+```json
+{ "records": ["<SyncRecord>"] }
+```
+
+The server MUST require an active requesting device capability token. For every submitted record it MUST verify that the outer `chain_id` matches the path, the record signer is active, the record signature verifies against the registered key, and the record size and field constraints are satisfied. The server MUST NOT decrypt `encrypted_payload`.
+
+A server MUST store a record only once using `(chain_id, record_id)` as immutable primary key. If an identical valid record already exists, it MAY report it as accepted idempotently. If the same primary key has different bytes, it MUST return `409 duplicate_record` and MUST NOT overwrite.
+
+Response:
+
+```json
+{
+  "accepted_record_ids": ["<UUID>"],
+  "duplicate_record_ids": ["<UUID>"],
+  "rejected": []
+}
+```
+
+### 12.8 Fetch Records
+
+`GET /pallasync/v2/chains/:chain_id/records?cursor=<opaque>&limit=<1..500>`
+
+Requires a capability token from an active device. The response order MUST be stable by server-assigned monotonically increasing sequence number, not client timestamp. It returns:
+
+```json
+{
+  "records": ["<SyncRecord>"],
+  "next_cursor": "<opaque or null>",
+  "server_time_ms": 1722837600000
+}
+```
+
+Clients MUST persist `next_cursor` only after each included record has been verified and durably processed. A client MUST deduplicate by `(chain_id, record_id)` because pages and retries may overlap.
+
+### 12.9 Delete Chain
+
+`DELETE /pallasync/v2/chains/:chain_id`
+
+Requires an active device capability token and an `admin_proof`. The server MUST atomically mark the chain deleted, retain a minimal deletion marker, reject all later mutating requests with `410`, and return `410` for authenticated reads.
+
+A client receiving `410 chain_deleted` SHOULD display a user-visible notice before deleting locally cached data, unless an application policy explicitly opts into immediate remote-wipe semantics. Local deletion MUST clear the chain secret, device key, outbox, cursors, and decrypted application state for that chain.
+
+---
+
+## 13. Server Storage Requirements
+
+A server MUST keep the following minimal data: public chain parameters, device registry including revocation state, immutable encrypted records, replay nonce cache until token expiry, invitation consumption state where used, cursors or monotonic record sequence numbers, and deletion markers.
+
+The server MUST NOT log HTTP request bodies, authorization headers, decrypted data, mnemonic phrases, root keys, encryption keys, or device private keys. Operational logs SHOULD minimize chain identifiers and MUST protect IP-address and timing metadata according to the service privacy policy.
+
+A server MUST implement rate limiting by IP address, chain ID, and device ID. It MUST impose configurable limits at least on request size, batch size, record size, enrollment attempts, and requests per time interval. Limits are deployment policy but MUST be advertised or returned in error responses where feasible.
+
+### 13.1 Database Schema (Reference)
+
+```sql
+CREATE TABLE chains (
+    chain_id TEXT PRIMARY KEY,
+    chain_salt TEXT NOT NULL,
+    admin_public_key TEXT NOT NULL,
+    created_at_ms INTEGER NOT NULL,
+    creator_device_id TEXT NOT NULL,
+    creator_public_key TEXT NOT NULL,
+    deleted_at_ms INTEGER DEFAULT NULL
+);
+
+CREATE TABLE devices (
+    chain_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    device_public_key TEXT NOT NULL,
+    encrypted_device_name TEXT NOT NULL,
+    device_name_nonce TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('active', 'revoked')),
+    created_at_ms INTEGER NOT NULL,
+    updated_at_ms INTEGER NOT NULL,
+    signature TEXT NOT NULL,
+    PRIMARY KEY (chain_id, device_id),
+    FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
+);
+
+CREATE TABLE sync_records (
+    chain_id TEXT NOT NULL,
+    record_id TEXT NOT NULL,
+    protocol_version TEXT NOT NULL,
+    epoch INTEGER NOT NULL,
+    collection_name TEXT NOT NULL,
+    action TEXT NOT NULL,
+    encrypted_payload TEXT NOT NULL,
+    payload_nonce TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    lamport INTEGER NOT NULL,
+    created_at_ms INTEGER NOT NULL,
+    signature TEXT NOT NULL,
+    server_sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    UNIQUE (chain_id, record_id),
+    FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
+);
+
+CREATE TABLE replay_nonces (
+    chain_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    nonce TEXT NOT NULL,
+    expires_at_ms INTEGER NOT NULL,
+    PRIMARY KEY (chain_id, device_id, nonce),
+    FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
+);
+
+CREATE TABLE cursors (
+    chain_id TEXT NOT NULL,
+    cursor_id TEXT PRIMARY KEY,
+    server_sequence INTEGER NOT NULL,
+    created_at_ms INTEGER NOT NULL,
+    expires_at_ms INTEGER NOT NULL,
+    FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
+);
+
+CREATE INDEX idx_records_chain_sequence ON sync_records(chain_id, server_sequence);
+CREATE INDEX idx_nonces_expiry ON replay_nonces(expires_at_ms);
+```
+
+---
+
+## 14. Client Synchronization Algorithm
+
+### 14.1 Outbox
+
+A client MUST write the local state change, the generated event, the increased Lamport clock, and the outbox entry atomically in one local transaction. It MUST retain an outbox event until the server has accepted it or it receives a terminal validation failure.
+
+For transient failures, clients SHOULD use exponential backoff with full jitter. A background loop MUST NOT poll at a fixed five-second interval indefinitely; clients SHOULD use push hints where available, foreground-aware intervals, and a bounded backoff range to reduce battery and server load.
+
+### 14.2 Inbound Processing
+
+For every downloaded record, the client MUST:
+
+1. Validate JSON, field types, lengths, protocol version, and Base64URL fields.
+2. Resolve the signer from the retained device registry; reject if unknown or invalid for the record's accepted historical status.
+3. Verify the Ed25519 signature over the canonical outer record with context string.
+4. Derive the epoch key, build the prescribed AAD, and perform authenticated decryption.
+5. Validate payload schema and verify outer/inner field consistency.
+6. Persist the record ID as processed, update Lamport state, and apply the declared conflict policy atomically.
+7. Advance the remote cursor only after durable completion.
+
+Malformed or cryptographically invalid records MUST be quarantined locally with diagnostic metadata and MUST NOT block processing of later valid records. Clients SHOULD report a privacy-preserving integrity error to the user or telemetry system without transmitting plaintext.
+
+### 14.3 Compaction
+
+Because records are immutable, implementations MUST define a retention and compaction policy. A server MAY compact only records whose application-level state is represented by a client-authenticated snapshot and whose tombstone-retention requirements are satisfied.
+
+A snapshot MUST be a normal signed encrypted record with a schema-specific snapshot marker, explicit coverage cursor, and deterministic conflict semantics. Servers MUST NOT manufacture snapshots because they cannot decrypt or authorize application state.
+
+---
+
+## 15. Schema Definitions
+
+### 15.1 Common Validation
+
+Each schema identifier is `reverse-domain-name/name/major-version`. A schema change that is not backward and forward compatible MUST increment its major version. A client MUST ignore an unknown schema after verifying and storing its envelope, rather than deleting it or treating it as malformed.
+
+Applications MUST define maximum serialized body size, normalization rules, and conflict type per schema. New clients MUST NOT overwrite unknown schema data.
+
+### 15.2 Record Size Limits
+
+| Field | Maximum Size |
+|---|---:|
+| Full record (serialized JSON) | 256 KiB |
+| Decrypted payload | 128 KiB |
+| `collection_name` | 128 bytes |
+| `entity_id` | 256 bytes |
+| `body` JSON depth | 32 levels |
+
+Servers MAY enforce stricter limits. Clients SHOULD reject oversized records before transmission.
+
+### 15.3 Favorite Tags
+
+Schema: `palleria.favorite_tag/2`.
+
+This schema uses an OR-Set. The body contains operations over normalized tag strings and unique add tags. A tag MUST be Unicode-normalized according to the application's explicitly documented normalization rule before comparison.
+
+### 15.4 Search History
+
+Schema: `palleria.search_history/2`.
+
+This schema is an LWW register containing an ordered, bounded sequence of entries. The body MUST include a declared maximum capacity, and receivers MUST deterministically trim oldest entries by the entry order defined by the application.
+
+### 15.5 Mute Settings
+
+Schema: `palleria.mute_settings/2`.
+
+This schema contains three independent OR-Sets: `mutedTags`, `mutedUsers`, and `mutedIllusts`. Numeric external IDs MUST be represented as strings to avoid precision loss across JSON implementations.
+
+### 15.6 View History
+
+Schema: `palleria.view_history/2`.
+
+This schema is an LWW map keyed by illustration ID. The illustration ID and `pageCount` MUST be strings. Each map value MUST include the ordering metadata required to deterministically resolve concurrent edits, and clients MUST enforce a documented maximum item count after convergence.
+
+---
+
+## 16. Key Compromise and Rotation
+
+Version 2.1 does not provide full forward secrecy for stored records because record epoch keys derive from a long-lived mnemonic root. Consequently, compromise of the mnemonic and chain parameters can decrypt historical records retained by an attacker.
+
+Clients MUST support chain migration: create a new mnemonic and salt, enroll trusted devices through a new invitation, export only current application state, and delete the old chain after users confirm. This is the required response to mnemonic compromise.
+
+**Epoch is fixed to 0 in PallaSync 2.1.** Any record with `epoch != 0` MUST be rejected. Key rotation is not part of this version.
+
+---
+
+## 17. Privacy Considerations
+
+The server learns chain IDs, device public keys, record counts, approximate ciphertext sizes, request timing, IP addresses, and which devices are active. Applications SHOULD batch small writes, add reasonable scheduling jitter, avoid leaking plaintext in collection names or error messages, and limit unencrypted metadata.
+
+`collection_name`, `action`, device ID, Lamport value, and timestamps are visible to the server in this protocol version because they are required for routing, validation, and conflict handling. Applications requiring stronger metadata protection SHOULD use opaque collection identifiers and coarse timestamps, accepting the resulting operational tradeoffs.
+
+### 17.1 Metadata Minimization
+
+- Use opaque `collection_name` values (e.g., `c1`, `c2`) instead of descriptive names.
+- Coarsen `created_at_ms` to nearest minute or hour where application logic permits.
+- Batch multiple logical operations into single records where feasible.
+- Add random padding to ciphertext sizes to obscure payload length.
+
+---
+
+## 18. Interoperability Test Requirements
+
+An implementation claiming PallaSync 2.1 conformance MUST pass test vectors for BIP39 seed derivation, HKDF labels, chain ID calculation, Base64URL encoding, JCS canonicalization, XChaCha20-Poly1305 encryption/decryption, Ed25519 signing/verification, capability-token rejection, replay-nonce rejection, malformed-record rejection, and deterministic conflict convergence.
+
+Test suites MUST include at least: duplicate JSON key rejection, Unicode canonicalization edge cases, invalid Base64URL, altered AAD, nonce length errors, wrong signer, revoked device, expired token, body-hash mismatch, record-ID collision with differing bytes, cursor replay, concurrent LWW writes, concurrent OR-Set additions/removals, and chain deletion behavior.
+
+### 18.1 Test Vectors
+
+See Appendix C for canonical test vectors covering:
+
+- BIP39 mnemonic to seed.
+- HKDF key derivation outputs.
+- Chain ID computation.
+- XChaCha20-Poly1305 encryption with known nonce.
+- Ed25519 signature over JCS object.
+- Capability token generation and verification.
+
+---
+
+## 19. Security Checklist
+
+Before production deployment, implementers MUST verify all of the following:
+
+- Every incoming DeviceRecord, SyncRecord, capability token, enrollment proof, and administrative action is validated before use.
+- Every received SyncRecord signature is verified before payload decryption.
+- Every encryption uses a fresh 24-byte random XChaCha20-Poly1305 nonce.
+- The AAD binds ciphertext to its chain, record, device, epoch, action, collection, and relevant metadata.
+- Device keys are random and hardware-protected where supported.
+- The server rejects unauthenticated, expired, replayed, revoked, and unauthorized requests.
+- API responses are paginated and cursor-driven rather than timestamp-driven.
+- Conflict resolution is declared per schema and deterministic.
+- Tombstones and snapshots follow retention policy.
+- Chain deletion requires a separate administrator proof.
+- Mnemonic loss, compromise, backup, and migration are explained in product UI.
+- Independent cryptographic and protocol security review has occurred before real user data is entrusted to the system.
+- Invitation verification includes user-confirmed device fingerprint display.
+- All signatures include context strings to prevent cross-protocol attacks.
+
+---
+
+## 20. Versioning
+
+The protocol major version is encoded in the API path and media type. A breaking wire, cryptographic, or security-model change MUST use a new major version and MUST NOT silently reinterpret existing records.
+
+Minor revisions may add optional response fields, optional schema capabilities, or stricter validation only where it does not invalidate conforming prior records. Clients MUST ignore unknown JSON members unless a schema explicitly prohibits them.
+
+### 20.1 Backward Compatibility Matrix
+
+| Client Version | Server Version | Behavior |
+|---|---|---|
+| 2.0 | 2.0 | Fully supported (deprecated) |
+| 2.0 | 2.1 | Read-only migration mode; writes rejected |
+| 2.1 | 2.0 | Rejected (new fields unknown) |
+| 2.1 | 2.1 | Fully supported |
+| 2.1 | future 2.x | Minor: compatible; Major: rejected |
+
+Clients SHOULD include `User-Agent: PallaSync/2.1` in HTTP requests. Servers MAY use this for compatibility checks.
+
+---
+
+## 21. Implementation Notes
+
+Rust implementations SHOULD use established libraries such as `bip39`, `hkdf`, `sha2`, `ed25519-dalek`, `chacha20poly1305`, `uuid`, and a verified JCS implementation. Kotlin/Android implementations SHOULD avoid custom JSON canonicalizers and must ensure byte-for-byte interoperability with the Rust reference vectors.
+
+The canonical data model, cryptographic behavior, test vectors, and error-code registry SHOULD live in a versioned standalone repository rather than being inferred from mobile-client internals. A reference implementation is useful but MUST NOT replace conformance tests and the normative wire specification.
+
+### 21.1 Android Platform Profile
+
+Android implementations MUST:
+
+- Store device private keys in Android Keystore with `setUserAuthenticationRequired(false)` and `setInvalidatedByBiometricEnrollment(true)`.
+- Mark mnemonic and keys as `setBackupExcluded(true)` in EncryptedSharedPreferences.
+- Detect Keystore corruption and trigger re-enrollment flow.
+- Use WorkManager with `setRequiresBatteryNotLow(true)` and `setRequiresCharging(false)` for background sync.
+- Handle Doze mode and App Standby by deferring non-critical sync.
+- Clear all chain data on app uninstall or factory reset.
+
+### 21.2 Server Deployment Profile
+
+Server deployments SHOULD:
+
+- Use SQLite with WAL mode for concurrent reads.
+- Enable foreign key constraints and `PRAGMA journal_mode=WAL`.
+- Run periodic `VACUUM` and `PRAGMA optimize`.
+- Back up database with encryption at rest.
+- Implement rate limiting with Redis or in-memory LRU cache.
+- Log operational metrics without chain IDs or device IDs.
+- Use HTTPS with TLS 1.3 and HSTS.
+- Implement health check endpoint `/health` returning `200 OK`.
+
+---
+
+## Appendix A: Example Signed Record Flow
+
+1. A device atomically increments its persisted Lamport counter and creates a UUIDv7 record ID.
+2. It serializes DataPayload with JCS, generates a 24-byte nonce, and encrypts using XChaCha20-Poly1305 with prescribed AAD.
+3. It constructs the SyncRecord, JCS-canonicalizes it without `signature`, prepends context string, and signs using its device private key.
+4. It creates a short-lived request capability token that binds the exact HTTP body hash, then uploads the batch.
+5. A receiving device verifies the server-delivered record signature using the registry public key before decrypting and deterministically applying the schema conflict rule.
+
+---
+
+## Appendix B: Migration from PallaSync 2.0
+
+PallaSync 2.0 records MUST NOT be treated as PallaSync 2.1 records. Version 2.0 used deterministic nonces, lacked required client-side signature verification, used timestamp-based incremental fetch, and did not define interoperable conflict resolution.
+
+Migration SHOULD create a new 2.1 chain, export the resolved local application state into 2.1 schema records, enroll devices using the new invitation procedure, confirm device availability, and only then delete the 2.0 chain. Clients MUST warn users that 2.0 historical records retain their original security properties and cannot gain forward secrecy retroactively.
+
+### B.1 Migration Steps
+
+1. **Create new 2.1 chain**: Generate new mnemonic and chain salt.
+2. **Export 2.0 state**: Read all 2.0 records, decrypt, resolve conflicts using application logic.
+3. **Re-encrypt as 2.1**: Create new 2.1 records with random nonces and proper signatures.
+4. **Enroll devices**: Use invitation bundles to add all devices to 2.1 chain.
+5. **Verify sync**: Confirm all devices have consistent 2.1 state.
+6. **Deprecate 2.0**: Optionally delete 2.0 chain after user confirmation.
+
+---
+
+## Appendix C: Test Vectors
+
+### C.1 BIP39 Mnemonic
+
+```
+mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art"
+bip39_passphrase = ""
+```
+
+### C.2 Expected Seed
+
+```
+root_seed (hex) = 5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc19a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4
+```
+
+### C.3 Chain Salt
+
+```
+chain_salt (hex) = 0000000000000000000000000000000000000000000000000000000000000000
+```
+
+### C.4 Chain ID
+
+```
+chain_id_bytes = SHA-256(b"PALLASYNC-CHAIN-ID-v2.1\0" || chain_salt || root_seed)
+chain_id (Base64URL) = <computed value>
+```
+
+### C.5 HKDF Outputs
+
+```
+prk = HKDF-Extract(salt=chain_salt, IKM=root_seed)
+epoch_key = HKDF-Expand(prk, info=b"PALLASYNC-v2.1\0epoch\0\x00\x00\x00\x00", L=32)
+record_key = HKDF-Expand(epoch_key, info=b"PALLASYNC-v2.1\0record\0", L=32)
+invite_key = HKDF-Expand(prk, info=b"PALLASYNC-v2.1\0invite-auth\0", L=32)
+admin_seed = HKDF-Expand(prk, info=b"PALLASYNC-v2.1\0admin-ed25519\0", L=32)
+```
+
+### C.6 XChaCha20-Poly1305 Encryption
+
+```
+plaintext = JCS({"schema":"test/1","entity_id":"test","operation":"upsert","context":{},"lamport":1,"created_at_ms":0,"body":{}})
+nonce (hex) = 000000000000000000000000000000000000000000000000
+aad = JCS({"protocol_version":"2.1","chain_id":"...","record_id":"...","epoch":0,"collection_name":"test/1","action":"upsert","device_id":"...","lamport":1,"created_at_ms":0})
+key = record_key
+ciphertext = XChaCha20Poly1305.encrypt(key, nonce, plaintext, aad)
+```
+
+### C.7 Ed25519 Signature
+
+```
+device_private_key (hex) = <random 32 bytes>
+message = b"PALLASYNC-SYNC-RECORD-v2.1\0" || JCS(SyncRecord without signature)
+signature = Ed25519.sign(device_private_key, message)
+```
+
+### C.8 Capability Token
+
+```
+token_json = {
+  "v": 1,
+  "chain_id": "...",
+  "device_id": "...",
+  "method": "POST",
+  "path": "/pallasync/v2/chains/.../records",
+  "query": "",
+  "body_sha256": "...",
+  "issued_at_ms": 0,
+  "expires_at_ms": 300000,
+  "nonce": "<16 random bytes Base64URL>"
+}
+token_message = b"PALLASYNC-CAPABILITY-v2.1\0" || JCS(token_json without signature)
+token_signature = Ed25519.sign(device_private_key, token_message)
+token = Base64URL(JCS(token_json with signature))
+```
+
+---
+
+## Appendix D: JSON Schema
+
+See accompanying `pallasync-2.1.schema.json` for machine-readable schema definitions of:
+
+- ChainParameters
+- InvitationBundle
+- EnrollmentRequest
+- CapabilityToken
+- SyncRecord
+- DataPayload
+- DeviceRecord
+- APIError
+- APIResponse
+
+---
+
+## Appendix E: Conformance Matrix
+
+| Feature | Required | Notes |
+|---|---|---|
+| BIP39 mnemonic | YES | 24 words, English |
+| HKDF-SHA256 | YES | RFC 5869 |
+| XChaCha20-Poly1305 | YES | Random nonce |
+| Ed25519 signatures | YES | With context string |
+| JCS canonicalization | YES | RFC 8785 |
+| Capability tokens | YES | Per-request |
+| Device enrollment | YES | HMAC + signature |
+| Admin proof | YES | For destructive ops |
+| Cursor pagination | YES | Opaque cursor |
+| Conflict resolution | YES | LWW or OR-Set |
+| 2.0 backward compat | OPTIONAL | Read-only migration |
+| Epoch rotation | NO | Fixed to 0 in 2.1 |
+
+---
+
+## Appendix F: Changelog
+
+| Version | Date | Changes |
+|---|---|---|
+| 2.1-R1 | 2026-09-11 | Revised: context strings, key hierarchy, invitation trust, test vectors, backward compatibility |
+| 2.1 | 2026-08-05 | Initial draft |
