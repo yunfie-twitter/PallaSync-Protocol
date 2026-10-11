@@ -62,7 +62,7 @@ PallaSync 2.1では、次の暗号技術を使用します。
 
 ## 現在の状態
 
-PallaSync Protocol 2.0は、現在 **Draft Standard** です。
+PallaSync Protocol 2.1は、現在 **Draft Standard** です。
 
 正式なStable Standardとして制定する前に、相互運用試験、Fuzzing、脅威モデルの公開、暗号設計レビュー、外部セキュリティ監査を実施する必要があります。
 
